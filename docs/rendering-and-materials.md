@@ -103,13 +103,23 @@ direction, color, shadow fraction, and transmitted irradiance; PMREM still
 includes the entire image. This remains a dominant-source approximation: ambient
 fill and other emitters contribute illumination without separate shadow maps.
 
-Switching updates table uniforms, shared caustic receiver irradiance/color, GPU
-caustic direction and flux correction, facility ground projection, and
-raised-surface depth cameras together. Swept
-bounds are refitted for the longer night shadows and all shadow caches are
-invalidated. The worker receives a lighting revision; old directional results
-are discarded and its shadow texture is cleared until the fresh field arrives.
-Returning to day reapplies the cached original environment and measurements. Because both modes are loaded before gameplay, the toggle has no lazy asset decode, analysis, or PMREM-generation path. Failures during either environment preparation remain part of the observed startup promise chain and reach the existing fatal UI.
+Switching pauses simulation and presentation on the last coherent canvas while
+the next mode is prepared. The transaction updates table uniforms, shared
+caustic receiver irradiance/color, GPU caustic direction and flux correction,
+facility ground projection, and raised-surface depth cameras. Swept bounds are
+refitted for the longer night shadows and all shadow caches are refreshed. The
+worker receives a lighting revision; old directional results are discarded and
+the transaction waits for the matching shadow/thickness response. An active
+Soccer keeper is refreshed in the same transaction. The local reflection probe
+then captures all six faces, a hidden render resolves render-time PMREM/material
+work, and a GPU queue fence completes before the background, fog, UI palette and
+one composite frame commit together. No intermediate cleared or mixed-lighting
+frame is presented.
+Returning to day reapplies the cached original environment and measurements.
+Because both modes are loaded before gameplay, the toggle has no lazy asset
+decode, analysis, or source-environment PMREM generation. Failures during either
+environment preparation remain part of the observed startup promise chain and
+reach the existing fatal UI.
 
 ## Table material
 

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
+import { setImmediate } from 'node:timers';
 import { URL } from 'node:url';
 import * as THREE from 'three/webgpu';
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
@@ -9,6 +10,7 @@ import { STUDIO_ENVIRONMENT } from '../src/graphics/scene/studio-environment.gen
 import { NIGHT_ENVIRONMENT } from '../src/graphics/scene/night-environment.generated.ts';
 import { shapeStudioLight } from '../src/graphics/scene/studio-light.ts';
 import { FacilityShadows } from '../src/facilities/shadows.ts';
+import { LightingMode } from '../src/app/lighting-mode.ts';
 
 
 const dayBytes=readFileSync(new URL('../dev-assets/environment/bg_room.exr',import.meta.url));
@@ -90,3 +92,46 @@ assert.equal(shadows.target.width,baselineWidth,'returning to the main footprint
 assert.equal(shadows.target.height,baselineHeight,'returning to the main footprint restores ground shadow height');
 shadows.dispose();mesh.geometry.dispose();mesh.material.dispose();
 console.log('Generated day/night environment parity, shadow reprojection, cache invalidation and exact day restoration passed');
+
+class TestButton extends globalThis.EventTarget {
+  disabled=false;title='';attributes=new Map();blurred=false;
+  setAttribute(name,value){this.attributes.set(name,value);}
+  removeAttribute(name){this.attributes.delete(name);}
+  blur(){this.blurred=true;}
+}
+class TestClassList {
+  values=new Set();
+  toggle(name,force){if(force)this.values.add(name);else this.values.delete(name);}
+  remove(name){this.values.delete(name);}
+  contains(name){return this.values.has(name);}
+}
+
+const originalDocument=globalThis.document,button=new TestButton(),classList=new TestClassList();
+globalThis.document={querySelector:selector=>selector==='#lighting-mode'?button:null,documentElement:{classList}};
+const modeScene=new THREE.Scene();modeScene.background=new THREE.Color('#e8d9c3');modeScene.fog=new THREE.Fog('#e8d9c3',2,12);
+const modeCamera=new THREE.PerspectiveCamera(),events=[];
+const modeRenderer={target:'screen',autoClear:false,getRenderTarget(){return this.target;},setRenderTarget(target){this.target=target;},render(){events.push('warm');},
+  backend:{device:{queue:{onSubmittedWorkDone:async()=>{events.push('fence');}}}}};
+let releasePreparation;
+const preparationGate=new Promise(resolve=>{releasePreparation=resolve;});
+const light=(name)=>({apply(){events.push(`apply-${name}`);},dispose(){events.push(`dispose-${name}`);},name});
+const dayMode=light('day'),nightMode=light('night'),failures=[];
+const lightingMode=new LightingMode(modeRenderer,modeScene,modeCamera,dayMode,nightMode,async selected=>{
+  events.push(`prepare-${selected.name}`);await preparationGate;events.push(`prepared-${selected.name}`);
+},()=>events.push('commit'),error=>failures.push(error));
+button.dispatchEvent(new globalThis.Event('click'));button.dispatchEvent(new globalThis.Event('click'));
+await Promise.resolve();
+assert(lightingMode.switching&&button.disabled,'the animation gate and control become busy before preparation yields');
+assert.equal(button.attributes.get('aria-busy'),'true');
+assert.deepEqual(events,['apply-night','prepare-night'],'duplicate activation cannot start a second transition');
+assert(!classList.contains('night-mode'),'the visible mode remains day while derived resources prepare');
+releasePreparation();await new Promise(resolve=>setImmediate(resolve));
+assert.deepEqual(events,['apply-night','prepare-night','prepared-night','warm','fence','commit'],'offscreen warmup and its GPU fence complete before the visible commit');
+assert(!lightingMode.switching&&!button.disabled&&!button.attributes.has('aria-busy'));
+assert(classList.contains('night-mode'));assert.equal(button.attributes.get('aria-pressed'),'true');
+assert.equal(modeRenderer.target,'screen');assert.equal(modeRenderer.autoClear,false,'offscreen warmup restores renderer state');
+button.dispatchEvent(new globalThis.Event('click'));await new Promise(resolve=>setImmediate(resolve));
+assert.deepEqual(events.slice(-6),['apply-day','prepare-day','prepared-day','warm','fence','commit'],'returning to day uses the same atomic preparation path');
+assert(!classList.contains('night-mode'));assert.equal(failures.length,0);
+lightingMode.dispose();assert(events.includes('dispose-night'));globalThis.document=originalDocument;
+console.log('Day/night switching gates animation, warms offscreen, fences GPU work and commits once.');

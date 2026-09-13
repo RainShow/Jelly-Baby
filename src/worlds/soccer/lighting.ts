@@ -41,5 +41,16 @@ export class SoccerLighting {
     void this.transport.update().catch(this.fail);
   }
 
+  /** Fully refresh the active keeper's derived lighting before a visible mode commit. */
+  async prepare(renderer:WebGPURenderer,active:boolean) {
+    this.receivers.enabledNode.value=active?1:0;
+    if(!active)return;
+    const direction=this.primary.lightDirection;
+    this.optics.setLightDirection(direction);
+    const transportReady=this.transport.refreshLighting(direction);
+    this.optics.update(renderer,this.body,true);
+    await transportReady;
+  }
+
   dispose(){this.receivers.enabledNode.value=0;this.transport.dispose();this.optics.dispose();}
 }

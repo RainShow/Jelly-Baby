@@ -7,7 +7,19 @@ import { SOCCER_ENVELOPE } from '../src/worlds/soccer/layout.ts';
 const received=new Set(),shadows=new FacilityShadows(new Vector3(-.55,-.76,.35).normalize(),.7,{register(mesh){received.add(mesh);}});
 const home=new Group();home.add(new Mesh(new BoxGeometry(.2,.1,.2),new MeshPhysicalNodeMaterial()));
 shadows.add(home,new Box3(new Vector3(-.35,0,-.35),new Vector3(.35,.2,.45)));
-const renderer={autoClear:true,target:null,getRenderTarget(){return this.target;},setRenderTarget(target){this.target=target;},render(){}};
+// Raised pitch fields can be created after an accessory has left its original
+// facility hierarchy. The registered source must survive that reparenting.
+const wardrobe=new Group(),player=new Group();
+const hat=new Mesh(new BoxGeometry(.04,.025,.04),new MeshPhysicalNodeMaterial());wardrobe.add(hat);
+shadows.add(wardrobe,new Box3(new Vector3(-.1,0,-.1),new Vector3(.1,.2,.1)));
+player.add(hat);wardrobe.visible=false;player.updateWorldMatrix(true,true);
+const pitchField=shadows.atHeight(.007,shadows.surfaces.directionNode.value.clone().negate(),shadows.surfaces.windowFraction.value);
+let pitchDirectionalCasters=0;
+const renderer={autoClear:true,target:null,getRenderTarget(){return this.target;},setRenderTarget(target){this.target=target;},render(scene){
+  if(this.target===pitchField.target)pitchDirectionalCasters=scene.children.filter(child=>child.name!=='facility-contact').length;
+}};
+pitchField.update(renderer);
+assert.equal(pitchDirectionalCasters,2,'the late pitch field retains both the home mesh and the reparented worn hat as casters');
 shadows.update(renderer);const reference=shadows.spanNode.value.clone(),width=shadows.target.width,height=shadows.target.height;
 const stadium=new SoccerStadium();stadium.group.visible=false;shadows.add(stadium.group,SOCCER_ENVELOPE);home.visible=false;stadium.group.visible=true;shadows.update(renderer);
 const turfMaterial=stadium.turf.material;
@@ -19,4 +31,4 @@ assert(densityX>=width/reference.x&&densityX<width/reference.x+1);assert(density
 stadium.group.traverse(mesh=>{if(mesh.isMesh)assert(mesh.castShadow&&mesh.receiveShadow&&mesh.receiveCaustics&&received.has(mesh),'every new stadium mesh participates in shared lighting');});
 stadium.group.visible=false;home.visible=true;shadows.update(renderer);assert.equal(shadows.target.width,width);assert.equal(shadows.target.height,height);
 console.log('Soccer shadow density matches Home; all surfaces cast/receive shadows and receive caustics; returning restores Home targets.',{densityX,densityY});
-shadows.dispose();stadium.dispose();home.children[0].geometry.dispose();home.children[0].material.dispose();
+shadows.dispose();stadium.dispose();home.children[0].geometry.dispose();home.children[0].material.dispose();hat.geometry.dispose();hat.material.dispose();

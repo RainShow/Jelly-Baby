@@ -6,7 +6,7 @@ import type { RefractiveLightField } from './refractive-light.js';
 /** View thickness and the legacy shadow/contact field stay asynchronous; caustics are GPU-frame-synchronous. */
 export class OpticalTransport {
   private worker:Worker;
-  private pending:{resolve:()=>void;reject:(e:Error)=>void}|null=null;
+  private pending:{promise:Promise<void>;resolve:()=>void;reject:(e:Error)=>void}|null=null;
   private tracedCenter:number[]|null=null;
   private tracedOrigin=[0,0];
   private disposed=false;
@@ -36,11 +36,11 @@ export class OpticalTransport {
       const out=body.surface.geometry.attributes.opticalThickness.array,ids=body.cage.thicknessIds,weights=body.cage.thicknessWeights;
       for(let i=0,j=0;i<out.length;i++,j+=3)out[i]=data.thickness[ids[j]]*weights[j]+data.thickness[ids[j+1]]*weights[j+1]+data.thickness[ids[j+2]]*weights[j+2];
       body.surface.geometry.attributes.opticalThickness.needsUpdate=true;
-      this.pending?.resolve();this.pending=null;
+      const pending=this.pending;this.pending=null;pending?.resolve();
     };
     this.worker.onerror=event=>{
       const error=new Error(`Light transport worker: ${event.message}`);
-      this.pending?.reject(error);this.pending=null;fail(error);
+      const pending=this.pending;this.pending=null;pending?.reject(error);fail(error);
     };
   }
   setLightDirection(direction:Vector3) {
@@ -49,19 +49,33 @@ export class OpticalTransport {
     this.optics.shadowBytes.fill(0);this.optics.shadowTexture.needsUpdate=true;
     this.worker.postMessage({type:'lighting',direction:direction.toArray(),lightingRevision:this.lightingRevision});
   }
+  /** Wait for a shadow/thickness response produced after the new light revision. */
+  async refreshLighting(direction:Vector3) {
+    const previous=this.pending?.promise;
+    this.setLightDirection(direction);
+    // Worker messages are FIFO. Let an older frame finish, then enqueue a
+    // forced frame behind the lighting message so its shadow cannot be stale.
+    if(previous)await previous;
+    if(this.disposed)return;
+    await this.update();
+  }
   update():Promise<void> {
-    if(this.pending||this.disposed)return Promise.resolve();
+    if(this.pending)return this.pending.promise;
+    if(this.disposed)return Promise.resolve();
     if(this.lastRevision===this.body.surfaceRevision&&this.lastCamera.distanceToSquared(this.camera.position)<1e-10)return Promise.resolve();
     const now=performance.now();if(now<this.nextRequestAt)return Promise.resolve();
     this.nextRequestAt=now+1000/30;
-    return new Promise((resolve,reject)=>{
-      this.pending={resolve,reject};
+    let resolve!:()=>void,reject!:(error:Error)=>void;
+    const promise=new Promise<void>((accept,decline)=>{resolve=accept;reject=decline;});
+    this.pending={promise,resolve,reject};
+    {
       const shapeChanged=this.lastRevision!==this.body.surfaceRevision;
       this.lastRevision=this.body.surfaceRevision;this.lastCamera.copy(this.camera.position);
       const particles=shapeChanged?this.body.x.slice():null,nodalF=shapeChanged?this.body.nodalF.slice():null;
       this.worker.postMessage({type:'frame',particles,nodalF,center:this.body.center.toArray(),camera:this.camera.position.toArray()},
         particles?[particles.buffer,nodalF!.buffer]:[]);
-    });
+    }
+    return promise;
   }
   follow() {
     if(!this.tracedCenter)return;
@@ -70,5 +84,5 @@ export class OpticalTransport {
     const dy=this.body.center.y-this.tracedCenter[1],d=this.optics.lightDirection;
     this.optics.shadowOrigin.copy(this.optics.contactOrigin).sub({x:dy*d.x/d.y,y:dy*d.z/d.y});
   }
-  dispose(){this.disposed=true;this.pending?.resolve();this.pending=null;this.worker.terminate();}
+  dispose(){this.disposed=true;const pending=this.pending;this.pending=null;pending?.resolve();this.worker.terminate();}
 }

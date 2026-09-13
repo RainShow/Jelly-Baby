@@ -50,9 +50,12 @@ stays diffuse rather than producing a coated reflective sheen. The existing pitc
 lines remain an overlay in the same turf material, so they do not z-fight with the
 textured slab.
 
-All three hats remain attached across travel and normal soccer locomotion. The
-shared carried-attire E action remains available according to the usual grounded
-wearable rules.
+All three hats remain attached across travel and normal soccer locomotion and
+cast onto the raised pitch while worn. Soccer's lazily-created pitch shadow
+field inherits the original registered caster list, so reparenting a hat from
+the dressing table to the shared baby before the first stadium visit cannot
+drop it from that field. The shared carried-attire E action remains available
+according to the usual grounded wearable rules.
 
 The goalkeeper uses an independent clone of the existing cage, the blueberry
 material and existing face rendering. Its face binds in the original local rest

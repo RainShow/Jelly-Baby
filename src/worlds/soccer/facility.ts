@@ -62,6 +62,7 @@ export class SoccerFacility implements Facility {
   }
   updateFrame(dt:number){const p=this.physics,body=p.goalie.body;if(body.surfaceDirty)body.updateSurface();this.goalie.update(dt,p.goalieLaughing,false,p.goalieCrying);}
   updateOptics(renderer:WebGPURenderer,active:boolean){this.lighting?.update(renderer,active);}
+  prepareLighting(renderer:WebGPURenderer,active:boolean){return this.lighting?.prepare(renderer,active)??Promise.resolve();}
   reset(){this.physics.reset();this.goalie.resetFace();this.update();}
   dispose(){this.lighting?.dispose();this.collision.dispose();this.goalieContact.dispose();this.stadium.dispose();this.goalie.dispose();this.ball.geometry.dispose();(this.ball.material as ReturnType<typeof soccerBallMaterial>).dispose();this.moving.removeFromParent();}
 }

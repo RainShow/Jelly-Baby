@@ -221,6 +221,12 @@ idle facility shadows stable and catches deformed trampoline fabric even when
 its object transform is unchanged. The render target and renderer state are
 restored after each update.
 
+Facility registration retains the original descendant-mesh caster list as well
+as the hierarchy root. Later-created raised ground fields reuse that snapshot;
+an accessory reparented onto the baby before a lazy world is built therefore
+continues to cast there even though it is no longer discoverable by traversing
+its dressing-table root.
+
 The table performs a deterministic 3×3 tent lookup of these channels. Its
 world-to-UV transform accounts for the WebGPU row direction explicitly; there
 is no camera-following shadow shimmer.

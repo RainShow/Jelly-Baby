@@ -45,7 +45,9 @@ viewports, and disables decorative motion when `prefers-reduced-motion` is set.
 The day/night button displays the current mode as a sun or moon and labels the
 action to switch to the other mode. It starts in day mode on each load, exposes
 pressed/busy state, and temporarily disables duplicate activation while the
-night HDR loads. Its controller is disposed with the runtime.
+next mode's shadow, caustic and reflection resources are prepared offscreen.
+Its icon and accessible pressed state change only with the single visible scene
+commit. Its controller is disposed with the runtime.
 
 ## Orbit and camera follow
 

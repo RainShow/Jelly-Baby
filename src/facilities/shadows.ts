@@ -27,7 +27,7 @@ export class FacilityShadows {
   private readonly casters:{source:THREE.Mesh;shadow:THREE.Mesh;contact:THREE.Mesh;matrix:THREE.Matrix4;positionVersion:number;projectionVersion:number}[]=[];
   private projectionVersion=0;
   private targetDirty=true;
-  private readonly envelopes:{group:THREE.Group;bounds:THREE.Box3;visible:boolean}[]=[];
+  private readonly envelopes:{group:THREE.Group;bounds:THREE.Box3;visible:boolean;sources:readonly THREE.Mesh[]}[]=[];
   private referenceSpan:THREE.Vector2|undefined;
   private readonly receiverFields=new Map<number,FacilityShadows>();
   private readonly receiverHeight:number;
@@ -58,20 +58,24 @@ export class FacilityShadows {
   }
   /** Bounds must include the facility's entire motion envelope, in world metres. */
   add(group:THREE.Group,envelope:THREE.Box3) {
+    const sources:THREE.Mesh[]=[];
+    group.traverse(object=>{if(object instanceof THREE.Mesh)sources.push(object);});
+    this.addSources(group,envelope,sources);
+  }
+  private addSources(group:THREE.Group,envelope:THREE.Box3,sources:readonly THREE.Mesh[]) {
     if(this.receiverHeight<0)this.surfaces.add(group,envelope);
-    for(const field of this.receiverFields.values())field.add(group,envelope);
-    this.envelopes.push({group,bounds:envelope.clone(),visible:this.visible(group)});this.fitBounds();
-    group.traverse(object=>{
-      if(!(object instanceof THREE.Mesh))return;
+    for(const field of this.receiverFields.values())field.addSources(group,envelope,sources);
+    this.envelopes.push({group,bounds:envelope.clone(),visible:this.visible(group),sources});this.fitBounds();
+    for(const object of sources) {
       if(this.receiverHeight<0&&object.receiveCaustics!==false)object.receiveCaustics=true;
       this.caustics?.register(object);
-      if(object.userData.opticalShadowCaster)return;
+      if(object.userData.opticalShadowCaster)continue;
       const shadow=new THREE.Mesh(object.geometry,this.material);
       shadow.matrixAutoUpdate=false;shadow.frustumCulled=false;this.scene.add(shadow);
       const contact=new THREE.Mesh(object.geometry,this.contactMaterial);
       contact.name='facility-contact';contact.matrixAutoUpdate=false;contact.frustumCulled=false;this.scene.add(contact);
       this.casters.push({source:object,shadow,contact,matrix:new THREE.Matrix4(),positionVersion:-1,projectionVersion:-1});
-    });
+    }
     this.targetDirty=true;
   }
   /** Reuse the floor projection at another horizontal receiver's elevation. */
@@ -80,7 +84,10 @@ export class FacilityShadows {
     if(!field){
       field=new FacilityShadows(incoming,windowFraction,undefined,height);
       field.referenceSpan=this.referenceSpan?.clone();
-      for(const item of this.envelopes)field.add(item.group,item.bounds);
+      // A wearable may have been reparented from its registered facility root
+      // onto the shared baby before this raised field exists. Preserve the
+      // original caster snapshot so lazy receiver fields do not lose it.
+      for(const item of this.envelopes)field.addSources(item.group,item.bounds,item.sources);
       this.receiverFields.set(height,field);
     }
     return field;
