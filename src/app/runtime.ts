@@ -182,7 +182,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
       transport.follow();
       optics.update(renderer,body);
       table.mesh.position.x=body.center.x;table.mesh.position.z=body.center.z;
-      localReflections.update(renderer,body.center,time);
+      localReflections.update(renderer,body.center);
       void transport.update().catch(fail);
       composite.render();
     }catch(error){fail(error);}

@@ -161,10 +161,14 @@ probe from [`local-reflections.ts`](../src/graphics/scene/local-reflections.ts).
 Open probe directions retain the current authored HDR environment, while actual
 visible scene geometry replaces it where walls, furniture, stadium structure, or
 other opaque scenery blocks the distant environment. The probe is fully captured
-under the loading card on startup/world travel, then refreshed during movement one
-cube face every 65 ms after the player has moved 2.5 cm. This keeps local
-reflection occlusion/parallax without adding six scene renders to a gameplay frame.
-The player itself is hidden from the probe to avoid recursive self-reflection.
+under the loading card on startup/world travel. During gameplay it refreshes after
+about 1.5 mm of player translation and renders at most four 128² cube faces per
+frame. Faces are staged into a scratch cube; only a completed six-face capture is
+GPU-copied into the stable cube used by the jelly material and then marked for
+PMREM refresh. This lets the next capture begin in the same frame without exposing
+a partially updated cube. Removing the previous per-face wall-clock throttle keeps
+local reflection parallax responsive while still avoiding a six-view spike in one
+frame. The player itself is hidden from the probe to avoid recursive self-reflection.
 Its `thicknessNode` reads the dynamic
 `opticalThickness` vertex attribute, which is filled asynchronously by the
 optical transport path. The flavor picker updates the surface color and
