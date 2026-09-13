@@ -53,8 +53,10 @@ const lowLandingShake=landingShake(.35),highLandingShake=landingShake(1.05);
 assert(highLandingShake>lowLandingShake*1.25,'high turf landings retain stronger soft-body deformation');
 
 placeBody(body,.4,.3,FIELD.y);soccer.centerBall();soccer.ball.set(.13,FIELD.y+BALL.radius,-1.56);soccer.ballVelocity.set(0,0,-.5);
-step(.05);assert.equal(soccer.score,1,'whole-ball crossing scores once');assert(soccer.laughing);step(.6);assert.equal(soccer.score,1);step(2.45);assert(!soccer.laughing,'three second celebration expires');
-assert(Math.abs(soccer.ball.x)<1e-6&&Math.abs(soccer.ball.z)<1e-6,'restart returns ball to centre');
+step(.05);assert.equal(soccer.score,1,'whole-ball crossing scores once');assert(soccer.laughing);
+const scoredBall=soccer.ball.clone();step(.6);assert.equal(soccer.score,1);assert(soccer.ball.distanceToSquared(scoredBall)<1e-12,'scored ball stays still during the dead-ball pause instead of travelling toward restart');
+step(2.45);assert(!soccer.laughing,'three second celebration expires');
+assert(Math.abs(soccer.ball.x)<1e-6&&Math.abs(soccer.ball.z)<1e-6,'restart snaps ball to centre');
 soccer.ball.set(.95,FIELD.y+BALL.radius,0);soccer.ballVelocity.set(1,0,0);step(.1);assert(soccer.ballVelocity.x<0,'side board rebounds');
 soccer.goalie.place(0,-1.43,0);soccer.ball.set(0,.20,-.98);soccer.ballVelocity.set(0,.15,-1.6);step(.20);assert(soccer.goalie.jumpHeight>0,'keeper launches a physical jump for a high shot');
 soccer.reset();assert.equal(soccer.score,0);assert.equal(soccer.ball.lengthSq()>0,true);

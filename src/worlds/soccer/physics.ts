@@ -83,6 +83,7 @@ export class SoccerPhysics {
   private elapsed=0;
   private celebration=0;
   private resetBallIn=0;
+  private holdScoredBall=false;
   private eventHold=0;
   private goalieClearance=0;
   private goalieTouchCooldown=0;
@@ -109,6 +110,7 @@ export class SoccerPhysics {
     this.elapsed+=h;this.eventHold-=h;this.goalieTouchCooldown=Math.max(0,this.goalieTouchCooldown-h);this.celebration=Math.max(0,this.celebration-h);
     this.thinkGoalie(h);this.goalie.step(h);this.goalie.body.step(h);
     if(this.resetBallIn>0){this.resetBallIn-=h;if(this.resetBallIn<=0)this.centerBall();}
+    if(this.holdScoredBall)return;
     this.previousBall.copy(this.ball);
     this.ballVelocity.y-=PHYS.gravity*h;
     this.ballVelocity.multiplyScalar(Math.exp(-.035*h));
@@ -117,10 +119,11 @@ export class SoccerPhysics {
     this.ballVelocity.z-=clamp(this.ballSpin.y*this.ballVelocity.x*.0007,-.3,.3)*h;
     this.ball.addScaledVector(this.ballVelocity,h);
     this.boundaries(h);
+    if(this.holdScoredBall)return;
     this.contactBody(this.goalie.body,true);
     const spinSpeed=this.ballSpin.length();if(spinSpeed>1e-5){this.rotation.setFromAxisAngle(this.normal.copy(this.ballSpin).normalize(),spinSpeed*h);this.ballRotation.premultiply(this.rotation).normalize();}
   }
-  afterStep(){this.contactBody(this.body,false);this.confineGoalie();}
+  afterStep(){if(!this.holdScoredBall)this.contactBody(this.body,false);this.confineGoalie();}
   private thinkGoalie(h:number) {
     const p=this.ball,v=this.ballVelocity,g=this.goalie,d=this.goalieBrain.step(h,{ballX:p.x,ballY:p.y,ballZ:p.z,ballVX:v.x,ballVY:v.y,ballVZ:v.z,keeperX:g.body.center.x,keeperZ:g.body.center.z,elapsed:this.elapsed,score:this.score});
     this.goalieClearance=d.clearance;if(d.jumpSpeed>0)g.jumpSpeed=d.jumpSpeed;
@@ -190,7 +193,13 @@ export class SoccerPhysics {
       const insideMouth=Math.abs(p.x)<GOAL.width/2-r&&p.y<FIELD.y+GOAL.height-r;
       if(p.z*side>FIELD.length/2-r&&!insideMouth&&p.y<FIELD.y+FIELD.wall+r){p.z=side*(FIELD.length/2-r);if(v.z*side>0)v.z*=-.55;}
       if(insideMouth&&p.z*side>FIELD.length/2+r&&this.previousBall.z*side<=FIELD.length/2+r&&this.resetBallIn<=0) {
-        if(side===-1){this.score++;this.celebration=3;this.goaliePersonality.notifyGoal();this.emit('goal',1);}this.resetBallIn=1.4;
+        if(side===-1){
+          this.score++;this.celebration=3;this.goaliePersonality.notifyGoal();this.emit('goal',1);
+          // Keep the scored ball visually still during the dead-ball pause. The
+          // restart itself is a hard snap to centre, never a simulated pull.
+          this.holdScoredBall=true;v.set(0,0,0);this.ballSpin.set(0,0,0);
+        }
+        this.resetBallIn=1.4;
       }
       if(p.z*side>FIELD.length/2&&Math.abs(p.x)<GOAL.width/2+r) {
         if(p.z*side>FIELD.length/2+GOAL.depth-r){p.z=side*(FIELD.length/2+GOAL.depth-r);v.z*=-.16;}
@@ -208,6 +217,6 @@ export class SoccerPhysics {
     const b=this.goalie.body,dx=clamp(b.center.x,-GOALIE_SIDE_LIMIT,GOALIE_SIDE_LIMIT)-b.center.x,dz=clamp(b.center.z,GOALIE_BACK_Z,GOALIE_FRONT_Z)-b.center.z;
     if(dx||dz){for(let j=0;j<b.x.length;j+=3){b.x[j]+=dx;b.x[j+2]+=dz;if(dx&&b.velocity[j]*dx<0)b.velocity[j]*=-.15;if(dz&&b.velocity[j+2]*dz<0)b.velocity[j+2]*=-.15;}b.updateCenter();b.surfaceDirty=true;}
   }
-  centerBall(){this.ball.set(0,FIELD.y+BALL.radius,0);this.ballVelocity.set(0,0,0);this.ballSpin.set(0,0,0);this.resetBallIn=0;}
+  centerBall(){this.ball.set(0,FIELD.y+BALL.radius,0);this.ballVelocity.set(0,0,0);this.ballSpin.set(0,0,0);this.ballRotation.identity();this.resetBallIn=0;this.holdScoredBall=false;}
   reset(){this.score=0;this.elapsed=this.celebration=this.eventHold=this.goalieClearance=this.goalieTouchCooldown=0;this.goalieBrain.reset();this.goaliePersonality.reset();this.centerBall();this.ballRotation.identity();this.goalie.place(0,GOALIE_HOME_Z,0);}
 }

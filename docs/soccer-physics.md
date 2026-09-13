@@ -13,7 +13,10 @@ The ball is a 42 mm sphere with 8 g mass. Gravity, restitution, rolling drag,
 contact-transferred spin, modest Magnus curvature and quaternion rotation run
 at the physics rate. Posts use sphere/cylinder-distance contacts; nets damp
 rebounds. A goal requires the whole ball to cross inside the posts and below
-the bar, once per crossing. Dead balls and goals return to centre after a short
+the bar, once per crossing. A scored ball is held still at its crossed-goal
+position during the short dead-ball pause, then snaps directly to centre with
+its velocity, spin and orientation reset; no simulated path or interpolation is
+used for the restart. Other dead balls also return to centre after their short
 delay so the ball cannot stay unreachable.
 
 Ball/jelly response uses a finite live FEM contact patch. The same normalized
