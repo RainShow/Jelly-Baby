@@ -11,7 +11,7 @@ export function createComposite(renderer:WebGPURenderer,scene:Scene,camera:Persp
   const vignette=screenUV.sub(.5).length().smoothstep(.24,.73).mul(.065);
   const balanced=color.rgb.add(glow.rgb).mul(vec3(.985,1.01,1.015));
   // High-contrast filmic pre-grade around linear 18% gray. Keep highlights HDR for AgX.
-  const contrasted=balanced.sub(.18).mul(1.18).add(.18).max(0);
+  const contrasted=balanced.sub(.18).mul(1.03).add(.18).max(0);
   const graded=contrasted.mul(float(1).sub(vignette));
   const pipeline=new RenderPipeline(renderer,vec4(graded,color.a));
   return {render:()=>pipeline.render(),dispose:()=>{glow.dispose();scenePass.dispose();pipeline.dispose();}};
