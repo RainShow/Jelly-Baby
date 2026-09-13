@@ -133,7 +133,10 @@ The physical node material combines the wood with:
 - facility shadow/contact from the separate facility target, 512² at the main
   playroom footprint and resized for larger active-world footprints to preserve
   its world-space texel density;
-- the shared GPU caustic receiver term, multiplied by measured window irradiance and color;
+- the shared GPU caustic receiver term, multiplied by measured window
+  irradiance/color and the already-filtered facility-source visibility so caustics
+  fade/deform under facility shadows without an extra render pass or
+  facility-shadow texture sampling;
 - a small reduction in albedo under the window's occluded diffuse contribution;
   and
 - roughness in the range produced by the source roughness map.

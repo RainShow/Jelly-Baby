@@ -33,10 +33,15 @@ export class CausticSurfaceField {
     // and forces opaque alpha to one (destroying receiver identities).
     this.material.fragmentNode=vec4(positionWorld.sub(centerNode),identity);
     this.proxies=new Map();this.previousInstances=new Float32Array();this.previousGeometry=[];
-    this.box=new THREE.Box3();this.inverse=new THREE.Matrix4();this.world=new THREE.Matrix4();this.instance=new THREE.Matrix4();
+    this.box=new THREE.Box3();this.cropBounds=new THREE.Box3();this.inverse=new THREE.Matrix4();this.world=new THREE.Matrix4();this.instance=new THREE.Matrix4();
   }
   update(center,reach) {
-    const active=[],geometries=[],unique=new Map();
+    const active=[],geometries=[],unique=new Map();this.cropBounds.makeEmpty();
+    // The atlas only covers the same local X/Z neighborhood it covered before,
+    // but its Y extent follows actual receiver surfaces instead of an empty cube.
+    // This preserves the transport footprint while spending the fixed 384² atlas
+    // on visible receivers, which is especially important at grazing view angles.
+    const cropMinX=center.x-reach,cropMaxX=center.x+reach,cropMinY=Math.min(0,center.y-reach),cropMaxY=center.y+reach,cropMinZ=center.z-reach,cropMaxZ=center.z+reach;
     for(const {mesh,id} of this.registry.meshes.values()){
       if(!visible(mesh)||mesh.receiveCaustics===false)continue;
       mesh.updateWorldMatrix(true,false);
@@ -54,6 +59,14 @@ export class CausticSurfaceField {
         this.box.copy(geometry.boundingBox).applyMatrix4(this.world);
         // Every outgoing ray is bounded to this distance; distant worlds never enter the trace.
         if(this.box.distanceToPoint(center)>reach*4)continue;
+        const minX=Math.max(this.box.min.x,cropMinX),maxX=Math.min(this.box.max.x,cropMaxX);
+        const minY=Math.max(this.box.min.y,cropMinY),maxY=Math.min(this.box.max.y,cropMaxY);
+        const minZ=Math.max(this.box.min.z,cropMinZ),maxZ=Math.min(this.box.max.z,cropMaxZ);
+        if(minX<=maxX&&minY<=maxY&&minZ<=maxZ){
+          this.cropBounds.min.x=Math.min(this.cropBounds.min.x,minX);this.cropBounds.max.x=Math.max(this.cropBounds.max.x,maxX);
+          this.cropBounds.min.y=Math.min(this.cropBounds.min.y,minY);this.cropBounds.max.y=Math.max(this.cropBounds.max.y,maxY);
+          this.cropBounds.min.z=Math.min(this.cropBounds.min.z,minZ);this.cropBounds.max.z=Math.max(this.cropBounds.max.z,maxZ);
+        }
         if(!cached.packed){cached.packed=packReceiverGeometry(geometry,cached.previous);cached.previous=null;}
         if(!unique.has(cached)){unique.set(cached,geometries.reduce((n,g)=>n+g.packed.data.length/4,0));geometries.push(cached);}
         const key=mesh.isInstancedMesh?`${id}:${i}`:id;

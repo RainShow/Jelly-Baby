@@ -4,7 +4,7 @@ import type { RefractiveLightField } from '../optics/refractive-light.js';
 import type { FacilityShadows } from '../../facilities/shadows.ts';
 
 /** The floor's shadow/contact shader, shared by every horizontal ground receiver. */
-export function groundReceiver(albedo:Node<'vec3'>,optics:RefractiveLightField,facilities:FacilityShadows,fraction:Node<'float'>,height=0,additional:readonly {optics:RefractiveLightField;enabledNode:Node<'float'>}[]=[]) {
+export function groundReceiver(albedo:Node<'vec3'>,optics:RefractiveLightField,facilities:FacilityShadows,fraction:Node<'float'>,height=0,additional:readonly {optics:RefractiveLightField;enabledNode:Node<'float'>}[]=[],sharedFacilityMask?:Node<'vec2'>) {
   const opticalMask=(optics:RefractiveLightField)=>{
   const direction=optics.lightDirectionNode as unknown as Node<'vec3'>;
   const projected=positionWorld.xz.sub(direction.xz.mul(height).div(direction.y));
@@ -23,17 +23,22 @@ export function groundReceiver(albedo:Node<'vec3'>,optics:RefractiveLightField,f
     shadow=float(1).sub(float(1).sub(shadow).mul(float(1).sub(mask.shadow.mul(source.enabledNode))));
     contact=contact.max(mask.contact.mul(source.enabledNode));
   }
-  const facilityUV=facilities.worldToUVNode.mul(vec3(positionWorld.xz,1)).xy;
-  const facilityInside=float(facilityUV.x.greaterThan(0).and(facilityUV.x.lessThan(1)).and(facilityUV.y.greaterThan(0)).and(facilityUV.y.lessThan(1)));
-  let facilityMask=vec2(0,0).add(0);
-  for(let y=-1;y<=1;y++)for(let x=-1;x<=1;x++) {
-    const weight=(x===0?2:1)*(y===0?2:1)/16;
-    facilityMask=facilityMask.add(texture(facilities.target.texture,facilityUV.add(vec2(x,y).mul(facilities.shadowTexelNode).mul(1.5))).rg.mul(weight));
+  let facilityMask=sharedFacilityMask;
+  if(!facilityMask){
+    const facilityUV=facilities.worldToUVNode.mul(vec3(positionWorld.xz,1)).xy;
+    const facilityInside=float(facilityUV.x.greaterThan(0).and(facilityUV.x.lessThan(1)).and(facilityUV.y.greaterThan(0)).and(facilityUV.y.lessThan(1)));
+    let filtered=vec2(0,0).add(0);
+    for(let y=-1;y<=1;y++)for(let x=-1;x<=1;x++) {
+      const weight=(x===0?2:1)*(y===0?2:1)/16;
+      filtered=filtered.add(texture(facilities.target.texture,facilityUV.add(vec2(x,y).mul(facilities.shadowTexelNode).mul(1.5))).rg.mul(weight));
+    }
+    facilityMask=vec2(filtered.x.mul(facilityInside),filtered.y.mul(facilityInside)).toVar();
   }
-  const facilityShadow=facilityMask.x.mul(facilityInside),facilityContact=facilityMask.y.mul(facilityInside);
-  const visibility=float(1).sub(shadow).mul(float(1).sub(facilityShadow));
+  const facilityShadow=facilityMask.x,facilityContact=facilityMask.y;
+  const facilityVisibility=float(1).sub(facilityShadow).toVar();
+  const visibility=float(1).sub(shadow).mul(facilityVisibility);
   return {
     color:albedo.mul(float(1).sub(float(1).sub(visibility).mul(fraction))).mul(float(1).sub(contact.mul(.40))).mul(float(1).sub(facilityContact.mul(.35))),
-    visibility:float(1).sub(facilityShadow),
+    visibility:facilityVisibility,facilityMask,
   };
 }

@@ -75,17 +75,24 @@ The half-float storage ceiling remains 60,000.
 
 Three 384² targets form a cropped camera atlas: RGBA32F receiver position/identity
 with depth, raw RGBA16F irradiance, and reconstructed RGBA16F irradiance exposed
-as `lightTexture`. Receiver identity
+as `lightTexture`. The crop keeps the established local X/Z transport footprint but
+fits its vertical extent to the actual nearby receiver bounds instead of a body-sized
+empty volume. This preserves the same target sizes and passes while allocating far
+more atlas rows to flat receivers at grazing camera angles, preventing visible
+horizontal texel banding. Receiver identity
 and plane-distance checks prevent deposits from bleeding onto unrelated surfaces.
 The material lookup uses four integer taps with identity and distance checks for
 bilinear reconstruction. It does not require float32 texture filtering.
 Camera movement rerasterizes the atlas but does not retrace unchanged transport.
 
 Before material lookup, `caustic-reconstruction.js` applies a mild 3×3 positive
-kernel with separable weights [1, 4, 1] (sigma approximately 0.58 atlas texels).
-This smooths magnified pixel steps with one small atlas pass, leaving ray counts,
-adaptive refinement, and texture dimensions unchanged. Identity, world-distance,
-and local plane checks reject taps on unrelated surfaces. Weights include unlit
+kernel. Resolved/isotropic regions retain separable [1, 4, 1] weights (sigma
+approximately 0.58 atlas texels). When receiver derivatives show a strongly
+anisotropic world-space footprint, as on the soccer pitch at a grazing camera
+angle, only the under-resolved axis smoothly broadens toward [1, 1, 1]. This
+suppresses row/column aliasing with the same nine taps, ray counts, refinement,
+target dimensions, and reconstruction-pass cost. Identity, world-distance, and
+local plane checks reject taps on unrelated surfaces. Weights include unlit
 neighbors and are normalized after surface rejection; there is no brightness
 threshold or temporal history. The extra RGBA16F target costs about 1.13 MiB per
 source. Reconstruction runs only when the atlas is rerendered.
@@ -119,9 +126,15 @@ representation; this is not inferred from arbitrary material code.
 
 Caustics are injected as albedo × irradiance / pi, scaled by the same measured
 window color/irradiance as the environment correction. Surface incidence and
-opaque visibility are already accounted for by geometric beam landing.
-Ground shadow/contact shading retains its established coefficients, but its
-incoming-light shadow mask is not applied a second time to refracted light.
+opaque visibility are already accounted for by geometric beam landing. Ground
+receivers also reuse the existing filtered facility-shadow visibility for the
+refracted direct-light term. The filtered facility-mask node is shared with the
+ground shader, so this adds no shadow pass, caustic target, or facility-shadow
+texture taps. Full source occlusion suppresses the caustic, while antialiased/
+tent-filtered partial coverage attenuates and reshapes it smoothly. The optical jelly shadow channel is
+intentionally excluded from this caustic visibility so a jelly does not erase its
+own refracted light. Ground shadow/contact shading otherwise retains its established
+coefficients.
 
 Additional jellies use independent optical transport with a shared receiver
 registry. `CausticReceivers.addSource` binds their additive irradiance to existing

@@ -139,16 +139,26 @@ export class RefractiveLightField {
     this.lastRevision=body.surfaceRevision;this.lastCenter.copy(c);this.dirty=false;
   }
   renderAtlas(renderer,center,viewProjection) {
-    // Crop the real camera to a bounded world region around the jelly and its receivers.
-    let minX=1,minY=1,maxX=-1,maxY=-1;const reach=this.span;
+    // Crop to the actual nearby receiver surfaces. The previous center±reach
+    // cube wasted most atlas rows on empty vertical space at grazing angles,
+    // turning a smooth floor caustic into visible horizontal texel bands.
+    const receiverBounds=this.surfaceField.cropBounds,reach=this.span;
+    const bounds=receiverBounds.isEmpty()?new THREE.Box3(
+      new THREE.Vector3(center.x-reach,Math.min(0,center.y-reach),center.z-reach),
+      new THREE.Vector3(center.x+reach,center.y+reach,center.z+reach),
+    ):receiverBounds;
+    let minX=1,minY=1,maxX=-1,maxY=-1;
     for(let i=0;i<8;i++){
-      const p=new THREE.Vector3(center.x+(i&1?reach:-reach),i&2?center.y+reach:Math.min(0,center.y-reach),center.z+(i&4?reach:-reach));
-      const clip=new THREE.Vector4(p.x,p.y,p.z,1).applyMatrix4(viewProjection);
-      if(clip.w<=0){minX=-1;minY=-1;maxX=1;maxY=1;break;}
-      minX=Math.min(minX,clip.x/clip.w);maxX=Math.max(maxX,clip.x/clip.w);minY=Math.min(minY,clip.y/clip.w);maxY=Math.max(maxY,clip.y/clip.w);
+      const p=new THREE.Vector4(i&1?bounds.max.x:bounds.min.x,i&2?bounds.max.y:bounds.min.y,i&4?bounds.max.z:bounds.min.z,1).applyMatrix4(viewProjection);
+      if(p.w<=0){minX=-1;minY=-1;maxX=1;maxY=1;break;}
+      minX=Math.min(minX,p.x/p.w);maxX=Math.max(maxX,p.x/p.w);minY=Math.min(minY,p.y/p.w);maxY=Math.max(maxY,p.y/p.w);
     }
     minX=Math.max(-1,minX);maxX=Math.min(1,maxX);minY=Math.max(-1,minY);maxY=Math.min(1,maxY);
-    const w=Math.max(.001,maxX-minX),h=Math.max(.001,maxY-minY);
+    // Keep two atlas texels of guard band for beam expansion/reconstruction.
+    let w=Math.max(.001,maxX-minX),h=Math.max(.001,maxY-minY);
+    const guard=2/(CAUSTIC_SIZE-4),padX=w*guard,padY=h*guard;
+    minX=Math.max(-1,minX-padX);maxX=Math.min(1,maxX+padX);minY=Math.max(-1,minY-padY);maxY=Math.min(1,maxY+padY);
+    w=Math.max(.001,maxX-minX);h=Math.max(.001,maxY-minY);
     this.crop.set(2/w,0,0,-(maxX+minX)/w,0,2/h,0,-(maxY+minY)/h,0,0,1,0,0,0,0,1);
     this.atlasCamera.copy(this.camera);this.atlasCamera.projectionMatrix.premultiply(this.crop);
     this.atlasCamera.projectionMatrixInverse.copy(this.atlasCamera.projectionMatrix).invert();

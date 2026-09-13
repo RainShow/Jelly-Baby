@@ -8,6 +8,7 @@ import { groundReceiver } from '../scene/ground-receiver.ts';
 export type CausticLighting={color:THREE.Color;irradiance:number;sourceSpread?:THREE.Vector3};
 type ReceiverOptions={albedo?:Node<'vec3'>;visibility?:Node<'float'>};
 type CausticMaterial=THREE.MeshStandardNodeMaterial|THREE.MeshPhysicalNodeMaterial;
+type GroundBinding={mesh:THREE.Mesh;albedo:Node<'vec3'>;facilities:FacilityShadows;fraction:Node<'float'>;height:number;facilityMask?:Node<'vec2'>};
 
 /** Scene-wide opt-in binding for geometric GPU caustics. */
 export class CausticReceivers {
@@ -18,7 +19,7 @@ export class CausticReceivers {
   private readonly meshes=new Map<THREE.Mesh,ReceiverOptions>();
   private readonly sources:CausticReceivers[]=[];
   readonly enabledNode=uniform(1);
-  private readonly grounds:{mesh:THREE.Mesh;albedo:Node<'vec3'>;facilities:FacilityShadows;fraction:Node<'float'>;height:number}[]=[];
+  private readonly grounds:GroundBinding[]=[];
 
   constructor(optics:RefractiveLightField,light:CausticLighting) {
     this.optics=optics;this.setLighting(light);
@@ -50,14 +51,17 @@ export class CausticReceivers {
 
   registerGround(mesh:THREE.Mesh,albedo:Node<'vec3'>,facilities:FacilityShadows,fraction:Node<'float'>,height=0) {
     const ground={mesh,albedo,facilities,fraction,height};this.grounds.push(ground);
-    this.bindGround(ground);
-    // Outgoing rays now test actual opaque occlusion. The incoming-light shadow
-    // mask belongs only to ground shading, not to refracted irradiance.
-    mesh.receiveCaustics=true;this.register(mesh,{albedo});
+    const visibility=this.bindGround(ground);
+    // Reuse the already-rendered facility shadow mask for refracted direct light.
+    // The mask is filtered/fractional, so partial source coverage attenuates and
+    // shapes the caustic instead of switching it abruptly on/off. Optical jelly
+    // shadows stay excluded here to avoid self-shadowing the jelly's own caustic.
+    mesh.receiveCaustics=true;this.register(mesh,{albedo,visibility});
   }
 
-  private bindGround(ground:typeof this.grounds[number]) {
-    const result=groundReceiver(ground.albedo,this.optics,ground.facilities,ground.fraction,ground.height,this.sources);
+  private bindGround(ground:GroundBinding) {
+    const result=groundReceiver(ground.albedo,this.optics,ground.facilities,ground.fraction,ground.height,this.sources,ground.facilityMask);
+    ground.facilityMask=result.facilityMask;
     const material=ground.mesh.material as THREE.MeshPhysicalNodeMaterial;
     material.colorNode=result.color;material.needsUpdate=true;return result.visibility;
   }
