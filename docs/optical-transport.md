@@ -77,25 +77,29 @@ Three 384² targets form a cropped camera atlas: RGBA32F receiver position/ident
 with depth, raw RGBA16F irradiance, and reconstructed RGBA16F irradiance exposed
 as `lightTexture`. The crop keeps the established local X/Z transport footprint but
 fits its vertical extent to the actual nearby receiver bounds instead of a body-sized
-empty volume. This preserves the same target sizes and passes while allocating far
-more atlas rows to flat receivers at grazing camera angles, preventing visible
-horizontal texel banding. Receiver identity
-and plane-distance checks prevent deposits from bleeding onto unrelated surfaces.
-The material lookup uses four integer taps with identity and distance checks for
-bilinear reconstruction. It does not require float32 texture filtering.
-Camera movement rerasterizes the atlas but does not retrace unchanged transport.
+empty volume. This preserves the same target sizes and passes while allocating more
+atlas area to real receiver surfaces. Receiver identity and plane-distance checks
+prevent deposits from bleeding onto unrelated surfaces. Camera movement
+rerasterizes the atlas but does not retrace unchanged transport.
 
-Before material lookup, `caustic-reconstruction.js` applies a mild 3×3 positive
-kernel. Resolved/isotropic regions retain separable [1, 4, 1] weights (sigma
-approximately 0.58 atlas texels). When receiver derivatives show a strongly
-anisotropic world-space footprint, as on the soccer pitch at a grazing camera
-angle, only the under-resolved axis smoothly broadens toward [1, 1, 1]. This
-suppresses row/column aliasing with the same nine taps, ray counts, refinement,
-target dimensions, and reconstruction-pass cost. Identity, world-distance, and
-local plane checks reject taps on unrelated surfaces. Weights include unlit
-neighbors and are normalized after surface rejection; there is no brightness
-threshold or temporal history. The extra RGBA16F target costs about 1.13 MiB per
-source. Reconstruction runs only when the atlas is rerendered.
+Before material lookup, `caustic-reconstruction.js` applies the established mild
+3×3 positive kernel with separable [1, 4, 1] weights (sigma approximately 0.58
+atlas texels). Identity, world-distance, and local plane checks reject taps on
+unrelated surfaces. Weights include unlit neighbors and are normalized after
+surface rejection; there is no brightness threshold or temporal history. The
+extra RGBA16F target costs about 1.13 MiB per source. Reconstruction runs only
+when the atlas is rerendered.
+
+Material lookup uses four integer taps for bilinear reconstruction and therefore
+does not require float32 texture filtering. Its continuity test is based on the
+actual atlas-to-world footprint at the shaded fragment. The footprint is derived
+from screen-space derivatives of receiver position and atlas UV, i.e. the local
+Jacobian of the same cropped camera projection used to build the atlas. This keeps
+the original tight world-distance rejection at normal viewing angles while
+expanding it only as required by foreshortening. A grazing horizontal receiver
+therefore no longer rejects valid neighboring atlas rows and produces stripe-like
+sampling gaps, while disconnected portions of a batched mesh still fail the
+world-distance continuity test.
 
 ## Receiver interface
 

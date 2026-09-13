@@ -25,8 +25,12 @@ const light={color:new THREE.Color(.8,.7,.6),irradiance:4};
 const receiverSource=readFileSync('src/graphics/optics/caustic-receivers.ts','utf8');
 const reconstructionSource=readFileSync('src/graphics/optics/caustic-reconstruction.js','utf8');
 const gpuSource=readFileSync('src/graphics/optics/gpu-caustics.js','utf8');
-assert(reconstructionSource.includes('smoothstep(1.25,3.0')&&reconstructionSource.includes('for(var y=-1;y<=1;y++){for(var x=-1;x<=1;x++){'),
-  'grazing-angle reconstruction adapts within the existing 3x3/nine-tap pass');
+assert(reconstructionSource.includes('select(1.0,4.0,x==0)')&&reconstructionSource.includes('for(var y=-1;y<=1;y++){for(var x=-1;x<=1;x++){'),
+  'caustic reconstruction keeps the established 3x3 [1,4,1] quality filter');
+assert(gpuSource.includes('const atlasStepU=')&&gpuSource.includes('const atlasStepV=')&&gpuSource.includes('continuityRadius'),
+  'material lookup derives receiver continuity from the atlas-to-world Jacobian at grazing angles');
+assert(gpuSource.includes('receiver.xyz.distance(local).lessThan(continuityRadius)'),
+  'adaptive grazing tolerance still preserves world-space disconnected-surface rejection');
 assert(gpuSource.includes('this.surfaceField.cropBounds'),'atlas projection uses nearby receiver bounds instead of only an empty body-sized cube');
 assert(receiverSource.includes('sampleIrradiance()')&&!receiverSource.includes('floorDistance'),
   'receivers use surface-specific irradiance without back-projecting along the unrefracted direction');

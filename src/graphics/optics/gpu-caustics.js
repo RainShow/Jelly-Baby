@@ -82,13 +82,23 @@ export class RefractiveLightField {
     const identity=uniform(0).onObjectUpdate(({object})=>this.registry.meshes.get(object)?.id??0);
     const inside=uv.x.greaterThan(0).and(uv.x.lessThan(1)).and(uv.y.greaterThan(0)).and(uv.y.lessThan(1)).and(clip.w.greaterThan(0));
     // Bilinear reconstruction accepts only taps on this object's nearby surface.
+    // At grazing camera angles a single atlas row spans much farther in world
+    // space than span/CAUSTIC_SIZE. Derive that footprint from the current
+    // surface and the atlas UV Jacobian instead of using a fixed world-distance
+    // gate; otherwise valid adjacent rows get rejected and appear as stripes.
+    const localDx=local.dFdx(),localDy=local.dFdy(),uvDx=uv.xy.dFdx(),uvDy=uv.xy.dFdy();
+    const det=uvDx.x.mul(uvDy.y).sub(uvDy.x.mul(uvDx.y)).abs().max(1e-9);
+    const atlasScale=float(1/CAUSTIC_SIZE).div(det);
+    const atlasStepU=localDx.mul(uvDy.y).sub(localDy.mul(uvDx.y)).mul(atlasScale);
+    const atlasStepV=localDy.mul(uvDx.x).sub(localDx.mul(uvDy.x)).mul(atlasScale);
+    const continuityRadius=vec2(atlasStepU.length(),atlasStepV.length()).length().mul(1.25).max(this.pixelNode.mul(4));
     // Integer loads also avoid requiring float32-filterable for the position atlas.
     const pixel=uv.xy.mul(CAUSTIC_SIZE).sub(.5),base=pixel.floor(),fraction=pixel.fract();
     let result=vec3(0),weightSum=float(0);
     for(let y=0;y<2;y++)for(let x=0;x<2;x++){
       const coord=ivec2(base.add(vec2(x,y)).clamp(0,CAUSTIC_SIZE-1));
       const receiver=textureLoad(this.receiverTarget.texture,coord);
-      const valid=inside.and(identity.greaterThan(0)).and(receiver.a.equal(identity)).and(receiver.xyz.distance(local).lessThan(this.pixelNode.mul(4)));
+      const valid=inside.and(identity.greaterThan(0)).and(receiver.a.equal(identity)).and(receiver.xyz.distance(local).lessThan(continuityRadius));
       const weight=(x?fraction.x:float(1).sub(fraction.x)).mul(y?fraction.y:float(1).sub(fraction.y)).mul(float(valid));
       result=result.add(textureLoad(this.lightTexture,coord).rgb.mul(weight));weightSum=weightSum.add(weight);
     }

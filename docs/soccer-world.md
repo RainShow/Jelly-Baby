@@ -41,8 +41,10 @@ current view angle.
 The pitch uses the authored four-map grass package in
 [`src/assets/grass_texture`](../src/assets/grass_texture/). Its base, normal,
 roughness, and displacement maps repeat at a `.16 m` tile size, giving the
-2 × 3.08 m field a consistent square texture scale. The existing pitch lines
-remain an overlay in the same turf material, so they do not z-fight with the
+2 × 3.08 m field a consistent square texture scale. The roughness map is used as
+an actual PBR roughness map without the toy-enamel clearcoat/remap, so the turf
+stays diffuse rather than producing a coated reflective sheen. The existing pitch
+lines remain an overlay in the same turf material, so they do not z-fight with the
 textured slab.
 
 All three hats remain attached across travel and normal soccer locomotion. The
