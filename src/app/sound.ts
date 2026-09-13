@@ -69,8 +69,15 @@ export class JellySound {
     return this.muted;
   }
   listen(camera:PerspectiveCamera) {
-    const {x,y,z}=camera.position,e=camera.matrixWorld.elements;
-    this.listener={x,y,z,rightX:e[0],rightZ:e[2]};
+    const {x,y,z}=camera.position,e=camera.matrixWorld.elements,l=this.listener;
+    l.x=x;l.y=y;l.z=z;l.rightX=e[0];l.rightZ=e[2];
+  }
+  prepareWorld(world:'home'|'toys'|'soccer') {
+    // Audio contexts only exist after a user gesture. Destination loading happens
+    // after that gesture, so generate procedural beds while the loading card is up
+    // instead of on the first moving frame in the new world.
+    if(world==='toys')this.tricycleRoll?.prepare();
+    else if(world==='soccer')this.soccer?.prepare();
   }
   facility=(event:FacilitySoundEvent)=>{
     if(this.muted||document.hidden)return;

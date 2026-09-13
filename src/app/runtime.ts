@@ -40,9 +40,12 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   const camera=new THREE.PerspectiveCamera(36,1,.001,40);
   camera.position.set(.111,.170,.256);
   stage('Loading the little room');
-  const [environment,cage,tableTextures]=await Promise.all([
-    loadEnvironment(renderer,scene),loadBabyCage(),loadTableTextures(),
+  const [environment,nightEnvironment,cage,tableTextures]=await Promise.all([
+    loadEnvironment(renderer,scene),loadEnvironment(renderer,scene,true),loadBabyCage(),loadTableTextures(),
   ]);
+  // Start the large table uploads before CPU-side world construction so the
+  // backend can overlap transfer work with geometry/physics setup.
+  for(const texture of Object.values(tableTextures))renderer.initTexture(texture);
   stage('Making a little jelly');
   const body=new SoftBody(cage);
   const baby=new Baby(body);scene.add(baby.group);
@@ -50,6 +53,9 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   baby.setReflectionMap(localReflections.texture,environment.intensity);
   const optics=new RefractiveLightField(body.cage.opticalSurface,environment.incoming,ABSORPTION);
   optics.setCamera(camera);
+  // Worker BVH construction is independent of the remaining scene setup. Start
+  // it here so that cold worker initialization runs in parallel with facilities.
+  const transport=new OpticalTransport(optics,body,camera,environment.incoming,fail);
   const caustics=new CausticReceivers(optics,environment);
   const facilityShadows=new FacilityShadows(environment.incoming,environment.windowFraction,caustics);
   facilityShadows.surfaces.addBaby(baby.mesh);
@@ -98,6 +104,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   worlds.onMenuOpen=worlds.onMove;
   worlds.onReady=async()=>{
     input.teleport();rig.yaw=worlds.arrivalYaw;baby.resetFace();physicsClock.reset();
+    sound.prepareWorld(worlds.current);
     if(worlds.tricycle){
       worlds.tricycle.physics.onCrash=speed=>sound.contact(speed,false);
       worlds.tricycle.onWalkCurbImpact=speed=>rig.surfaceImpact(speed);
@@ -106,8 +113,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
     baby.update();optics.update(renderer,body,true);transport.follow();await transport.update();
     localReflections.captureNow(renderer,body.center);
   };
-  const transport=new OpticalTransport(optics,body,camera,environment.incoming,fail);
-  const lightingMode=new LightingMode(renderer,scene,environment,light=>{
+  const lightingMode=new LightingMode(scene,environment,nightEnvironment,light=>{
     optics.setLightDirection(light.incoming);transport.setLightDirection(light.incoming);
     facilityShadows.setLighting(light.incoming,light.windowFraction);caustics.setLighting(light);table.setLighting(light);
     localReflections.setEnvironment(light.reflectionTexture);baby.setReflectionMap(localReflections.texture,light.intensity);

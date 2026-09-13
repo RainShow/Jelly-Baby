@@ -37,6 +37,13 @@ shader context matches gameplay. Every transition still performs a hidden render
 and GPU queue fence before the loading overlay closes. The helper does not alter
 normal render culling, visibility, materials, or collision behavior.
 
+The moving caustic receiver field also avoids per-frame transient packing work: its
+proxy list, geometry list, instance records, matrices, vectors, and upload buffers are
+reused across frames. Geometry buffers are repacked only when the active geometry set
+changes; unchanged receiver instances do not trigger a storage-buffer upload. This is
+a CPU/GC optimization only and does not change ray count, atlas resolution, filtering,
+or receiver selection.
+
 ## Drawing-buffer and camera sizing
 
 [`resizeView`](../src/graphics/scene/renderer.ts) is called after startup and through a
@@ -60,20 +67,16 @@ not enter the tabletop composition.
 
 ## Scene and lighting
 
-Day mode is the default. The scene uses a warm beige background and matching fog. The HDR room image is
-loaded from [`src/assets/bg_room.exr`](../src/assets/bg_room.exr) as half-float
-linear data. It is not drawn as the scene background; it is converted into a
-PMREM environment texture for image-based lighting.
+Day mode is the default. The scene uses a warm beige background and matching fog. The authored day and night HDR images live under `dev-assets/environment/`, outside the runtime asset graph. `npm run build:environment` decodes both offline. The day source receives the exact studio-light shaping pass before its half-float pixels are written to [`src/assets/bg_room_studio.rgba16f`](../src/assets/bg_room_studio.rgba16f); the night source is copied losslessly into [`src/assets/night.rgba16f`](../src/assets/night.rgba16f). Their measured direction/color/spread/irradiance constants are emitted into `studio-environment.generated.ts` and `night-environment.generated.ts`. Runtime fetches those exact RGBA16F pixels directly and converts them into PMREM environment textures, so neither mode performs EXR decoding or HDR source analysis in the browser.
 
-[`src/graphics/scene/studio-light.ts`](../src/graphics/scene/studio-light.ts) reorients the
-photographed window to the project's elevated key direction, applies a broad
-gain to the key and a reduced fill to the rest of the room, and writes a new
-half-float HDR image. The preprocessing uses allocation-bounded typed scratch
-buffers and scalar sampling but preserves the edited half-float output exactly.
-`measureWindow` then integrates that edited image to
-derive the direction, color, irradiance, and window fraction used by the table,
-shadow, and optical systems. This keeps the visible environment and measured
-light source from disagreeing.
+[`src/graphics/scene/studio-light.ts`](../src/graphics/scene/studio-light.ts) is still the
+single source of truth for the edit: it reorients the photographed window to the
+project's elevated key direction, applies a broad gain to the key and a reduced fill
+to the rest of the room, and writes the half-float HDR image. `measureWindow` then
+integrates that edited image to derive the values used by the table, shadow, and
+optical systems. The lighting verification regenerates the studio image from the
+authored EXR and requires byte-for-byte parity with the runtime file, so moving this
+work out of startup does not change visual quality or transport values.
 
 The environment contributes general illumination through PMREM. The table's
 window occlusion and transmitted flux are added as a measured local correction,
@@ -91,12 +94,7 @@ The jelly receives only the facility map, keeping its existing self-shading inta
 
 ## Night mode
 
-The sun/moon control uses `LightingMode` to load `night.exr` on first use and
-cache its PMREM for later toggles. Day keeps its original studio shaping,
-environment intensity, exposure, and post process. Night uses the supplied HDR
-without studio rotation or window gain, at environment intensity `.45`, with
-a dark blue background/fog and a readable evening UI palette. Exposure and the
-post process stay fixed.
+The sun/moon control uses the prebaked night RGBA16F environment and its generated lighting metadata. Day keeps its original studio shaping, environment intensity, exposure, and post process. Night uses the supplied HDR pixels without studio rotation or window gain, at environment intensity `.45`, with a dark blue background/fog and a readable evening UI palette. Both PMREM targets are generated during the initial loading screen and retained, so the first night toggle performs only the already-prepared lighting/environment state swap. Exposure and the post process stay fixed.
 
 The night image's strongest patch is below the horizon. Its shadow-source
 threshold therefore uses the upper hemisphere's peak, so that lower patch
@@ -111,9 +109,7 @@ raised-surface depth cameras together. Swept
 bounds are refitted for the longer night shadows and all shadow caches are
 invalidated. The worker receives a lighting revision; old directional results
 are discarded and its shadow texture is cleared until the fresh field arrives.
-Returning to day reapplies the cached original environment and measurements.
-The first night load disables the button while pending; failures reach the
-existing fatal UI, and disposal prevents late loads from changing the scene.
+Returning to day reapplies the cached original environment and measurements. Because both modes are loaded before gameplay, the toggle has no lazy asset decode, analysis, or PMREM-generation path. Failures during either environment preparation remain part of the observed startup promise chain and reach the existing fatal UI.
 
 ## Table material
 

@@ -55,6 +55,9 @@ export class RefractiveLightField {
     this.lookupMatrixNode=uniform(new THREE.Matrix4());
     this.camera=null;this.atlasCamera=new THREE.PerspectiveCamera();this.crop=new THREE.Matrix4();
     this.lastRevision=-1;this.lastCamera=new THREE.Matrix4().makeScale(0,0,0);this.lastCenter=new THREE.Vector3(Infinity,Infinity,Infinity);
+    this.scratchSize=new THREE.Vector3();this.scratchAxis=new THREE.Vector3();this.scratchCorner=new THREE.Vector3();this.clipCorner=new THREE.Vector4();
+    this.viewProjection=new THREE.Matrix4();this.localMatrix=new THREE.Matrix4();this.translation=new THREE.Matrix4();
+    this.fallbackBounds=new THREE.Box3(new THREE.Vector3(),new THREE.Vector3());this.zeroSpread=new THREE.Vector3();
     this.dirty=true;this.pixelNode=uniform(.001);
     this.makeKernels();
   }
@@ -73,7 +76,7 @@ export class RefractiveLightField {
   registerReceiver(mesh){this.registry.register(mesh);this.dirty=true;}
   setAbsorption(sigma){this.absorptionNode.value.set(...sigma);this.dirty=true;}
   setLightDirection(direction){this.lightDirection.copy(direction).normalize();this.dirty=true;}
-  setSourceSpread(spread){this.spreadNode.value.copy(spread??new THREE.Vector3());this.dirty=true;}
+  setSourceSpread(spread){this.spreadNode.value.copy(spread??this.zeroSpread);this.dirty=true;}
 
   /** A normalized receiver irradiance node; public receiver opt-in remains independent of transport. */
   sampleIrradiance() {
@@ -108,7 +111,7 @@ export class RefractiveLightField {
   update(renderer,body,force=false) {
     const c=body.center,changed=force||this.lastRevision!==body.surfaceRevision||!this.lastCenter.equals(c);
     this.centerNode.value.copy(c);
-    const box=body.surface.geometry.boundingBox,size=box.getSize(new THREE.Vector3());
+    const box=body.surface.geometry.boundingBox,size=box.getSize(this.scratchSize);
     this.span=Math.max(.22,size.x*2+.04,size.z*2+.04,Math.max(0,box.max.y)*Math.max(Math.abs(this.lightDirection.x/this.lightDirection.y),Math.abs(this.lightDirection.z/this.lightDirection.y))*2+.12);
     this.spanNode.value=this.span;this.origin.set(c.x-this.span/2,c.z-this.span/2);
     this.reachNode.value=Math.max(.15,this.span);
@@ -116,13 +119,14 @@ export class RefractiveLightField {
     const transportChanged=changed||receiversChanged||this.dirty;
     if(transportChanged){
       const D=this.lightDirection;
-      this.rightNode.value.crossVectors(D,Math.abs(D.z)>.96?new THREE.Vector3(0,1,0):new THREE.Vector3(0,0,1)).normalize();
+      this.scratchAxis.set(0,Math.abs(D.z)>.96?1:0,Math.abs(D.z)>.96?0:1);
+      this.rightNode.value.crossVectors(D,this.scratchAxis).normalize();
       this.upNode.value.crossVectors(this.rightNode.value,D).normalize();
       const r=this.rightNode.value,u=this.upNode.value;
       // Tight source bounds independent of the receiving footprint. Enclose all four angular views.
       let width=0,height=0;
       for(let i=0;i<8;i++){
-        const p=new THREE.Vector3(i&1?box.max.x:box.min.x,i&2?box.max.y:box.min.y,i&4?box.max.z:box.min.z).sub(c);
+        const p=this.scratchCorner.set(i&1?box.max.x:box.min.x,i&2?box.max.y:box.min.y,i&4?box.max.z:box.min.z).sub(c);
         width=Math.max(width,Math.abs(p.dot(r)));height=Math.max(height,Math.abs(p.dot(u)));
       }
       const angular=this.spreadNode.value.length(),margin=size.length()*angular+.001;
@@ -141,7 +145,7 @@ export class RefractiveLightField {
       renderer.compute([this.traces[0],this.traces[1],this.refine,this.traces[2]]);
     }
     if(this.camera){
-      this.camera.updateMatrixWorld();const viewProjection=new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
+      this.camera.updateMatrixWorld();const viewProjection=this.viewProjection.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
       if(transportChanged||!this.lastCamera.equals(viewProjection)){
         this.renderAtlas(renderer,c,viewProjection);this.lastCamera.copy(viewProjection);
       }
@@ -153,13 +157,13 @@ export class RefractiveLightField {
     // cube wasted most atlas rows on empty vertical space at grazing angles,
     // turning a smooth floor caustic into visible horizontal texel bands.
     const receiverBounds=this.surfaceField.cropBounds,reach=this.span;
-    const bounds=receiverBounds.isEmpty()?new THREE.Box3(
-      new THREE.Vector3(center.x-reach,Math.min(0,center.y-reach),center.z-reach),
-      new THREE.Vector3(center.x+reach,center.y+reach,center.z+reach),
+    const bounds=receiverBounds.isEmpty()?this.fallbackBounds.set(
+      this.fallbackBounds.min.set(center.x-reach,Math.min(0,center.y-reach),center.z-reach),
+      this.fallbackBounds.max.set(center.x+reach,center.y+reach,center.z+reach),
     ):receiverBounds;
     let minX=1,minY=1,maxX=-1,maxY=-1;
     for(let i=0;i<8;i++){
-      const p=new THREE.Vector4(i&1?bounds.max.x:bounds.min.x,i&2?bounds.max.y:bounds.min.y,i&4?bounds.max.z:bounds.min.z,1).applyMatrix4(viewProjection);
+      const p=this.clipCorner.set(i&1?bounds.max.x:bounds.min.x,i&2?bounds.max.y:bounds.min.y,i&4?bounds.max.z:bounds.min.z,1).applyMatrix4(viewProjection);
       if(p.w<=0){minX=-1;minY=-1;maxX=1;maxY=1;break;}
       minX=Math.min(minX,p.x/p.w);maxX=Math.max(maxX,p.x/p.w);minY=Math.min(minY,p.y/p.w);maxY=Math.max(maxY,p.y/p.w);
     }
@@ -172,7 +176,7 @@ export class RefractiveLightField {
     this.crop.set(2/w,0,0,-(maxX+minX)/w,0,2/h,0,-(maxY+minY)/h,0,0,1,0,0,0,0,1);
     this.atlasCamera.copy(this.camera);this.atlasCamera.projectionMatrix.premultiply(this.crop);
     this.atlasCamera.projectionMatrixInverse.copy(this.atlasCamera.projectionMatrix).invert();
-    const localMatrix=new THREE.Matrix4().multiplyMatrices(this.crop,viewProjection).multiply(new THREE.Matrix4().makeTranslation(center.x,center.y,center.z));
+    const localMatrix=this.localMatrix.multiplyMatrices(this.crop,viewProjection).multiply(this.translation.makeTranslation(center.x,center.y,center.z));
     this.beams.matrixNode.value.copy(localMatrix);this.lookupMatrixNode.value.copy(localMatrix);
     const previous=renderer.getRenderTarget();
     try {

@@ -125,6 +125,10 @@ export class WorldTravel {
       ]);
       const {SoccerFacility}=facilityModule,{module:turf,grass}=turfLoad;
       if(this.disposed){turf.disposeGrassTextures(grass);return;}
+      // Upload the four pitch maps before procedural stadium construction. This
+      // overlaps texture transfer with CPU geometry work and keeps first compile
+      // focused on pipelines instead of paying texture upload at the same time.
+      for(const texture of Object.values(grass))this.renderer.initTexture(texture);
       this.soccer=new SoccerFacility(this.soccerWorld,this.body,this.shadows,grass,{camera:this.camera,fail:this.fail});this.soccerFacilities.add(this.soccer);
       this.soccerPortal=new JellyPortal(SOCCER_PORTAL.x,SOCCER_PORTAL.z);this.soccerWorld.add(this.soccerPortal.group);this.shadows.add(this.soccerPortal.group,this.soccerPortal.lightingEnvelope);
       this.soccerPortalFacility=new PortalFacility(this.body,'soccer-portal-housing',SOCCER_PORTAL.x,SOCCER_PORTAL.z,this.soccerPortal.collisionBoxes,()=>this.requestTravel(),()=>this.portalAvailable());

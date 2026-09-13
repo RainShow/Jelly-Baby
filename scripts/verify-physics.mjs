@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { Vector2, Vector3, PerspectiveCamera, HalfFloatType, Raycaster, Plane } from 'three/webgpu';
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
-import { measureWindow } from '../src/graphics/scene/environment.ts';
+import { measureWindow } from '../src/graphics/scene/environment-measure.ts';
 import { shapeStudioLight, STUDIO_KEY } from '../src/graphics/scene/studio-light.ts';
 import { loadModel } from './load-model.mjs';
 import { SoftBody } from '../src/physics/soft-body.js';
@@ -154,7 +154,7 @@ for(let i=0;i<240;i++){
 }
 assert(releaseMovement>1e-6&&maxSameSteps<8,'hard release continues solving instead of freezing on the orientation boundary');
 
-const bytes=readFileSync('src/assets/bg_room.exr');
+const bytes=readFileSync('dev-assets/environment/bg_room.exr');
 const exr=new EXRLoader().setDataType(HalfFloatType).parse(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength));
 const studio=shapeStudioLight(exr,measureWindow(exr).incoming.negate());
 const light=measureWindow(studio);

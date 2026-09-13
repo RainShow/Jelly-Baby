@@ -1,6 +1,6 @@
 # Jelly Baby
 
-![Jelly Baby](assets/og_image.png)
+![Jelly Baby](public/og_image.png)
 
 ***Play live at: https://jelly.scottsun.io***
 

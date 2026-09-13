@@ -210,3 +210,9 @@ voices, and ignores facilities farther than `.9` m.
 Mute fades the master gain and stops active facility voices. Hiding the tab also
 stops facility voices; reset stops and clears them. Disposal aborts listeners,
 disconnects nodes, and closes the context if it is still open.
+
+## Runtime UI bookkeeping
+
+Static desktop hint and touch-jump elements are cached by `Input` at construction. Their
+text/disabled state is updated only when the effective walk/vehicle/Soccer hint mode changes,
+rather than queried and rewritten every rendered frame.

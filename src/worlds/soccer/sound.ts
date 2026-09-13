@@ -37,28 +37,38 @@ export class SoccerAudio {
   private runBus:GainNode|null=null;
   private runNodes:AudioNode[]=[];
   private stepTimer:ReturnType<typeof setTimeout>|null=null;
+  private noise:AudioBuffer|null=null;
   private foot=false;
   private lastEvent=-1;
   constructor(context:AudioContext,output:AudioNode){this.context=context;this.output=output;}
   private buffer(kind:SoccerEvent) {
     let buffer=this.buffers.get(kind);if(!buffer){const data=soccerSample(kind,this.context.sampleRate);buffer=this.context.createBuffer(1,data.length,this.context.sampleRate);buffer.copyToChannel(data,0);this.buffers.set(kind,buffer);}return buffer;
   }
-  private noiseBuffer(seconds:number) {
-    const n=Math.ceil(this.context.sampleRate*seconds),buffer=this.context.createBuffer(1,n,this.context.sampleRate),data=buffer.getChannelData(0);
+  private noiseBuffer() {
+    if(this.noise)return this.noise;
+    // All grass voices draw different slices from one long noise bed. The
+    // spectral process is unchanged, but steps no longer allocate/fill a fresh
+    // AudioBuffer (and thousands of random samples) during gameplay.
+    const seconds=4.5,n=Math.ceil(this.context.sampleRate*seconds),buffer=this.context.createBuffer(1,n,this.context.sampleRate),data=buffer.getChannelData(0);
     let brown=0,last=0;
     for(let i=0;i<n;i++) {
       const white=Math.random()*2-1;brown=brown*.985+white*.015;
       const smooth=white*.63+last*.37;last=smooth;data[i]=smooth*.78+brown*.9;
     }
-    return buffer;
+    this.noise=buffer;return buffer;
+  }
+  private noiseOffset(seconds:number) {return Math.random()*Math.max(0,this.noiseBuffer().duration-seconds-.001);}
+  prepare() {
+    this.noiseBuffer();
+    for(const kind of ['bump','save','post','goal'] as const)this.buffer(kind);
   }
   private connectGrass(node:AudioNode,stereo:number) {
     const panner=this.context.createStereoPanner();panner.pan.value=Math.max(-1,Math.min(1,stereo));node.connect(panner).connect(this.output);return panner;
   }
-  private scheduleGrassVoice(source:AudioBufferSourceNode,nodes:AudioNode[],start:number,stop:number) {
+  private scheduleGrassVoice(source:AudioBufferSourceNode,nodes:AudioNode[],start:number,stop:number,offset:number) {
     const voice={source,nodes};this.grassVoices.add(voice);
     source.onended=()=>{if(!this.grassVoices.delete(voice))return;source.disconnect();for(const node of nodes)node.disconnect();};
-    source.start(start);source.stop(stop);
+    source.start(start,offset);source.stop(stop);
   }
   /** The broad friction-like contact from grass_movement_sound_lab_v2.html. */
   private grassContact(type:GrassContactType,strength:number,stereo:number) {
@@ -68,7 +78,7 @@ export class SoccerAudio {
     if(type==='takeoff'){dur=.24;peak=.105;attack=.025;release=.19;}
     if(type==='land'){dur=.38;peak=.165;attack=.018;release=.32;}
 
-    const source=ctx.createBufferSource();source.buffer=this.noiseBuffer(dur);
+    const source=ctx.createBufferSource();source.buffer=this.noiseBuffer();
     const highpass=ctx.createBiquadFilter();highpass.type='highpass';highpass.frequency.value=260+soft*160;
     const body=ctx.createBiquadFilter();body.type='bandpass';body.frequency.value=820+(1-moist)*520+drag*260;body.Q.value=.42+soft*.18;
     const air=ctx.createBiquadFilter();air.type='highshelf';air.frequency.value=2300;air.gain.value=-7+grass*5-moist*3;
@@ -76,28 +86,28 @@ export class SoccerAudio {
     gain.gain.setValueAtTime(.0001,t);gain.gain.linearRampToValueAtTime(amount,t+attack);
     gain.gain.setValueAtTime(amount*(.86+Math.random()*.08),t+attack+dur*.24);gain.gain.exponentialRampToValueAtTime(.0001,t+release);
     body.frequency.setValueAtTime(body.frequency.value*.82,t);body.frequency.exponentialRampToValueAtTime(body.frequency.value*1.08,t+dur*.45);body.frequency.exponentialRampToValueAtTime(body.frequency.value*.72,t+dur);
-    const panner=this.connectGrass(gain,stereo);source.connect(highpass).connect(body).connect(air).connect(gain);this.scheduleGrassVoice(source,[highpass,body,air,gain,panner],t,t+dur);
+    const panner=this.connectGrass(gain,stereo);source.connect(highpass).connect(body).connect(air).connect(gain);this.scheduleGrassVoice(source,[highpass,body,air,gain,panner],t,t+dur,this.noiseOffset(dur));
 
-    const low=ctx.createBufferSource();low.buffer=this.noiseBuffer(Math.min(.20,dur));
+    const lowDur=Math.min(.20,dur),low=ctx.createBufferSource();low.buffer=this.noiseBuffer();
     const lowpass=ctx.createBiquadFilter();lowpass.type='lowpass';lowpass.frequency.value=260+soft*120;
     const lowGain=ctx.createGain(),lowAmount=(type==='land'?.036:.018)*strength*(.45+soft*.45)*GRASS_VOLUME;
     lowGain.gain.setValueAtTime(.0001,t);lowGain.gain.linearRampToValueAtTime(lowAmount,t+.018);lowGain.gain.exponentialRampToValueAtTime(.0001,t+(type==='land'?.18:.11));
-    const lowPanner=this.connectGrass(lowGain,stereo*.45);low.connect(lowpass).connect(lowGain);this.scheduleGrassVoice(low,[lowpass,lowGain,lowPanner],t,t+Math.min(.20,dur));
+    const lowPanner=this.connectGrass(lowGain,stereo*.45);low.connect(lowpass).connect(lowGain);this.scheduleGrassVoice(low,[lowpass,lowGain,lowPanner],t,t+lowDur,this.noiseOffset(lowDur));
 
     if(type==='land') {
-      const trail=ctx.createBufferSource();trail.buffer=this.noiseBuffer(.32);
+      const trail=ctx.createBufferSource();trail.buffer=this.noiseBuffer();
       const trailBand=ctx.createBiquadFilter();trailBand.type='bandpass';trailBand.frequency.value=1200+(1-moist)*500;trailBand.Q.value=.35;
       const trailGain=ctx.createGain();trailGain.gain.setValueAtTime(.0001,t+.055);trailGain.gain.linearRampToValueAtTime(.045*grass*strength*GRASS_VOLUME,t+.095);trailGain.gain.exponentialRampToValueAtTime(.0001,t+.34);
-      const trailPanner=this.connectGrass(trailGain,-stereo*.2);trail.connect(trailBand).connect(trailGain);this.scheduleGrassVoice(trail,[trailBand,trailGain,trailPanner],t+.055,t+.375);
+      const trailPanner=this.connectGrass(trailGain,-stereo*.2);trail.connect(trailBand).connect(trailGain);this.scheduleGrassVoice(trail,[trailBand,trailGain,trailPanner],t+.055,t+.375,this.noiseOffset(.32));
     }
   }
   private startRunBed() {
     if(this.runSource)return;
     const ctx=this.context,bus=ctx.createGain(),source=ctx.createBufferSource(),highpass=ctx.createBiquadFilter(),bandpass=ctx.createBiquadFilter();
-    bus.gain.value=.0001;source.buffer=this.noiseBuffer(3.2);source.loop=true;highpass.type='highpass';highpass.frequency.value=520;bandpass.type='bandpass';bandpass.frequency.value=1280;bandpass.Q.value=.33;
+    bus.gain.value=.0001;source.buffer=this.noiseBuffer();source.loop=true;highpass.type='highpass';highpass.frequency.value=520;bandpass.type='bandpass';bandpass.frequency.value=1280;bandpass.Q.value=.33;
     source.connect(highpass).connect(bandpass).connect(bus).connect(this.output);
     const now=ctx.currentTime;bus.gain.setValueAtTime(.0001,now);bus.gain.linearRampToValueAtTime(.018*(.45+GRASS_PRESENCE*.55)*GRASS_VOLUME,now+.12);
-    source.onended=()=>{source.disconnect();bus.disconnect();highpass.disconnect();bandpass.disconnect();};source.start();
+    source.onended=()=>{source.disconnect();bus.disconnect();highpass.disconnect();bandpass.disconnect();};source.start(ctx.currentTime,this.noiseOffset(0));
     this.runSource=source;this.runBus=bus;this.runNodes=[bus,highpass,bandpass];
     this.grassStep();
   }
@@ -131,5 +141,5 @@ export class SoccerAudio {
     for(const voice of this.grassVoices){try{voice.source.stop();}catch{voice.source.disconnect();}voice.source.disconnect();for(const node of voice.nodes)node.disconnect();}this.grassVoices.clear();
     for(const voice of this.voices){try{voice.stop();}catch{voice.disconnect();}voice.disconnect();}this.voices.clear();this.lastEvent=-1;this.foot=false;
   }
-  dispose(){this.stop();this.buffers.clear();}
+  dispose(){this.stop();this.buffers.clear();this.noise=null;}
 }

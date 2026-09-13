@@ -76,7 +76,12 @@ const registry=new CausticSurfaces(),centerNode=uniform(new THREE.Vector3());
 const field=new CausticSurfaceField(registry,centerNode);
 const cropPlane=new THREE.Mesh(new THREE.PlaneGeometry(4,4),new THREE.MeshBasicMaterial());
 cropPlane.rotation.x=-Math.PI/2;cropPlane.position.y=.012;cropPlane.receiveCaustics=true;registry.register(cropPlane);
-field.update(new THREE.Vector3(0,.07,0),.22);
+const fieldCenter=new THREE.Vector3(0,.07,0);
+assert.equal(field.update(fieldCenter,.22),true,'first receiver packing uploads geometry and instances');
+assert.equal(field.update(fieldCenter,.22),false,'unchanged receivers reuse packed GPU buffers without redundant uploads');
+cropPlane.position.x=.01;
+assert.equal(field.update(fieldCenter,.22),true,'moving a receiver still invalidates its instance record');
+cropPlane.position.x=0;field.update(fieldCenter,.22);
 assert(Math.abs(field.cropBounds.min.y-.012)<1e-6&&Math.abs(field.cropBounds.max.y-.012)<1e-6,
   'caustic atlas crop follows the actual flat receiver height instead of the old empty vertical cube');
 assert(Math.abs(field.cropBounds.min.x+.22)<1e-6&&Math.abs(field.cropBounds.max.x-.22)<1e-6,

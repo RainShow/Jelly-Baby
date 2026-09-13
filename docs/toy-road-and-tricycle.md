@@ -147,3 +147,9 @@ checks the twofold layout and 30 cm road width, widened-curb road confinement,
 finite 5 cm-wide walkable curb collision, localized curb narrow phase, cheap tree
 collision envelopes, portal clearance, unscaled obstacle dimensions with width-relative placement, enlarged house
 collision, authored obstacle footprints and low-pen wheel contact.
+
+## Tricycle hot-path scratch
+
+The 240 Hz tricycle solver reuses wheel-height storage, Euler/quaternion scratch, and the
+steering axis while riding. This preserves the same road-contact and rider-constraint math
+without per-substep temporary arrays or Three.js objects.

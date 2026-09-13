@@ -71,3 +71,9 @@ goalkeeping decisions.
 
 See [soccer physics](soccer-physics.md) and
 [soccer geometry and collision](soccer-geometry.md) for implementation contracts.
+
+## Collision-query allocation policy
+
+The static stadium collision grid uses nested numeric X/Z maps and reusable candidate/seen
+storage. The 240 Hz nearby-box query creates no string cell keys; this does not change
+which collision boxes reach the narrow phase.

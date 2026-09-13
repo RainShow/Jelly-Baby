@@ -18,8 +18,8 @@ const app=element(),loading=element();
 globalThis.document={createElement:element,querySelector:selector=>selector==='#loading'?loading:app};
 globalThis.window={addEventListener(){}};
 globalThis.requestAnimationFrame=callback=>globalThis.queueMicrotask(callback);
-let compiles=0,renders=0,ready=0,moves=0,failure;
-const renderer={compileAsync:async()=>{compiles++;},render(){renders++;},backend:{device:{queue:{onSubmittedWorkDone:async()=>{}}}}};
+let compiles=0,renders=0,textureUploads=0,ready=0,moves=0,failure;
+const renderer={compileAsync:async()=>{compiles++;},initTexture(){textureUploads++;},render(){renders++;},backend:{device:{queue:{onSubmittedWorkDone:async()=>{}}}}};
 const body=new SoftBody(loadModel()),home=new Facilities(body),scene=new Scene();
 let persistentResets=0,ordinaryResets=0;
 const dummy=(id,persistent=false)=>({id,label:id,active:false,interactionDistance:Infinity,persistAcrossTravel:persistent,interact(){return false;},step(){},update(){},reset(){if(persistent)persistentResets++;else ordinaryResets++;},dispose(){}});
@@ -66,7 +66,7 @@ bike.physics.speed=.2;worlds.reset();assert.equal(bike.physics.speed,0);assert(w
 place(TRACK_PORTAL.x,TRACK_PORTAL.z+.01);worlds.step(1.1);worlds.portalFacility.interact();elements.find(e=>e.textContent==='Play Soccer').click();await waitForTravel();
 assert(worlds.inSoccer&&worlds.soccerWorld.visible&&!worlds.toys.visible&&!worlds.home.visible);assert.equal(worlds.facilities,worlds.soccerFacilities);
 assert(Math.abs(body.center.x-SOCCER_PORTAL.x)<1e-8);assert((body.center.z-SOCCER_PORTAL.z)*(camera.position.z-SOCCER_PORTAL.z)>0);
-const soccer=worlds.soccer;assert(soccer);
+const soccer=worlds.soccer;assert(soccer);assert.equal(textureUploads,4,'soccer starts all four grass texture uploads under the loading card');
 for(const detail of soccer.goalie.face.details.filter(d=>d.kind==='eye')) {
   const p=detail.mesh.geometry.attributes.position;let y=0,z=0;for(let i=0;i<p.count;i++){y+=p.getY(i)/p.count;z+=p.getZ(i)/p.count;}
   assert(y>FIELD.y+.040&&y<FIELD.y+.055&&z>-1.43&&z<-1.39,'goalie face binds locally and follows its on-foot placed head');
@@ -74,6 +74,7 @@ for(const detail of soccer.goalie.face.details.filter(d=>d.kind==='eye')) {
 soccer.physics.score=3;worlds.reset();assert(worlds.inSoccer&&!soccer.active&&soccer.physics.score===0);
 place(SOCCER_PORTAL.x,SOCCER_PORTAL.z+.01);worlds.step(1.1);worlds.portalFacility.interact();elements.find(e=>e.textContent==='Home').click();await waitForTravel();assert.equal(worlds.current,'home');
 place(HOME_PORTAL.x,HOME_PORTAL.z+.01);worlds.step(1.1);worlds.portalFacility.interact();elements.find(e=>e.textContent==='Play Soccer').click();await waitForTravel();assert.equal(worlds.soccer,soccer,'soccer geometry reuses its first build');
+assert.equal(textureUploads,4,'returning to soccer reuses the already-uploaded grass textures');
 assert.equal(compiles,2,'each lazy destination compiles exactly once');assert.equal(renders,6,'every transition still receives a hidden first render');assert.equal(ready,6);
 worlds.dispose();home.dispose();assert.equal(scene.children.length,0);
 console.log('Portal aperture, camera-side arrival and facing, persistent equipment, loading, round trip, ownership, arrival cooldown, reuse, reset and disposal passed.');

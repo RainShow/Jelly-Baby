@@ -171,6 +171,11 @@ worker reuses the most recent shadow/contact field and sends only new thickness.
 This is why camera orbit remains responsive without repeatedly rebuilding the
 directional field.
 
+The worker's directional raster and view-thickness loops reuse triangle/ray/intersection
+scratch storage rather than allocating arrays and hit records per triangle or vertex.
+The arithmetic and resulting shadow/contact bytes and thickness values are unchanged;
+the change only removes worker CPU/GC overhead from startup and later 30 Hz updates.
+
 `follow()` compensates for body translation between the worker's traced center
 and the current center. It shifts the contact origin horizontally and reprojects
 the directional shadow origin for the current vertical offset, so a delayed

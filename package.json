@@ -8,6 +8,7 @@
     "lint": "eslint src scripts eslint.config.js",
     "typecheck": "tsc --noEmit",
     "build:model": "node scripts/build-model.mjs",
+    "build:environment": "node --experimental-strip-types scripts/build-studio-environment.mjs",
     "build:kernel": "node scripts/build-kernel.mjs",
     "test": "node scripts/test-suite.mjs",
     "test:physics": "node --experimental-strip-types scripts/verify-physics.mjs",
@@ -37,7 +38,7 @@
     "test:deformation": "node --experimental-strip-types scripts/verify-deformation.mjs",
     "test:performance": "node --experimental-strip-types scripts/verify-performance.mjs",
     "benchmark": "node --experimental-strip-types scripts/benchmark.mjs",
-    "build": "tsc && vite build",
+    "build": "node scripts/ensure-built-assets.mjs && tsc && vite build",
     "preview": "vite preview"
   },
   "devDependencies": {

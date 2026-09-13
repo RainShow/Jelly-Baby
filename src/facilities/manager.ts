@@ -63,8 +63,12 @@ export class Facilities {
     if(!this.enabled)return undefined;
     const active=this.active;
     if(active?.allowCarriedInteraction&&active.showPrompt===false)return this.items.find(item=>item.persistAcrossTravel&&Number.isFinite(item.interactionDistance));
-    return active??this.items.filter(item=>Number.isFinite(item.interactionDistance))
-      .sort((a,b)=>a.interactionDistance-b.interactionDistance)[0];
+    if(active)return active;
+    let candidate:Facility|undefined,distance=Infinity;
+    // This runs every rendered frame. A stable linear minimum is equivalent to
+    // filter()+stable sort()[0], without allocating and sorting a temporary list.
+    for(const item of this.items)if(Number.isFinite(item.interactionDistance)&&item.interactionDistance<distance){candidate=item;distance=item.interactionDistance;}
+    return candidate;
   }
   private interact() {
     if(this.candidate?.interact()){this.onInteract();this.update();}

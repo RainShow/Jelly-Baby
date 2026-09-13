@@ -45,14 +45,15 @@ local `try` block still reaches the visible error card.
 
 `startGame` performs the following work in order:
 
-1. `index.html` preloads the mandatory day HDR, jelly binary, and three wood
-   maps so their transfer/decode can overlap module and WebGPU startup.
+1. `index.html` module-preloads the runtime and preloads both generated RGBA16F environments, the jelly binary + manifest, and three wood maps so transfer can overlap WebGPU startup. The authored day/night EXRs are development inputs rather than browser decode costs.
 2. Create and initialize the WebGPU renderer, append its canvas to `#viewport`,
    and construct `JellySound` early so the first user gesture can unlock Web
    Audio while the rest of the scene loads.
-3. Load the environment, jelly cage, and table texture set concurrently. Build
-   the soft body, baby, optical field, table, composite pipeline, locomotion
-   rig, facility manager, flavor picker, input, and optical worker afterward.
+3. Load and PMREM-prepare both day and night environments, the jelly cage, and the table texture set during the loading screen. Start the large table texture uploads as soon as those maps arrive, then build the
+   soft body, baby, optical field, table, composite pipeline, locomotion rig,
+   facility manager, flavor picker, and input. The optical worker starts as soon
+   as the body/optical field exist so its BVH initialization overlaps the rest of
+   CPU scene construction instead of extending the end of the loading screen.
 4. Attach reset, sound, facility, resize, and failure callbacks.
 5. Settle the body for 80 fixed steps before showing the first frame. This lets
    contact and posture establish without exposing the startup pose.
@@ -93,6 +94,11 @@ visible frame, the order is:
    field/table coordinates are refreshed.
 7. The worker is offered a transport update if its single-request and 30 Hz
    limits allow it, then the composite pipeline renders the frame.
+
+Hot-path bookkeeping is allocation-bounded: facility selection uses a stable linear
+minimum instead of a temporary sorted list, input caches its static HUD elements, and
+world-specific collision/vehicle code reuses scratch storage inside the 240 Hz loop.
+These are execution-only changes; interaction ordering and thresholds are unchanged.
 
 This ordering is deliberate. Physics must see input before it runs, picking and
 face attachment must see the same surface that rendering sees, and the optical

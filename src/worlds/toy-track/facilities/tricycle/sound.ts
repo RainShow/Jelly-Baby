@@ -95,7 +95,7 @@ export class TricycleRollAudio {
 
   dispose(){this.stop();this.buffer=null;this.squeakBuffer=null;}
 
-  private start() {
+  prepare() {
     const ctx=this.context;
     if(!this.buffer) {
       const data=makeTricycleRollSample(ctx.sampleRate);
@@ -105,6 +105,10 @@ export class TricycleRollAudio {
       const data=makeTricycleSqueakSample(ctx.sampleRate);
       this.squeakBuffer=ctx.createBuffer(1,data.length,ctx.sampleRate);this.squeakBuffer.copyToChannel(data,0);
     }
+  }
+
+  private start() {
+    const ctx=this.context;this.prepare();
     const source=ctx.createBufferSource(),squeakSource=ctx.createBufferSource();
     const filter=ctx.createBiquadFilter(),squeakFilter=ctx.createBiquadFilter();
     const gain=ctx.createGain(),squeakGain=ctx.createGain(),panner=ctx.createStereoPanner();

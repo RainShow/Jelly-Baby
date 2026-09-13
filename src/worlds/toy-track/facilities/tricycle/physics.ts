@@ -42,7 +42,11 @@ export class TricyclePhysics {
   private readonly obstacleStepClosing:number[]=[];
   private readonly onTrack:boolean;
   private readonly rotation=new Quaternion();
+  private readonly riderEuler=new Euler();
+  private readonly steeringRotation=new Quaternion();
+  private readonly steeringAxis=new Vector3(0,1,0);
   private readonly riderPoint=new Vector3();
+  private readonly wheelHeights=new Float64Array(WHEEL_CONTACTS.length);
   onCrash:(strength:number)=>void=()=>{};
   private standingFor=0;
   private flightFor=0;
@@ -186,7 +190,8 @@ export class TricyclePhysics {
     this.speed=clamp(vx*forwardX+vz*forwardZ,-.10,.34);
     this.lateralSpeed=clamp(vx*sideX+vz*sideZ,-.14,.14);
     if(this.onTrack) {
-      const heights=WHEEL_CONTACTS.map(w=>wheelHeight(this.position.x+Math.cos(this.yaw)*w.x+Math.sin(this.yaw)*w.z,this.position.z-Math.sin(this.yaw)*w.x+Math.cos(this.yaw)*w.z,w.r,this.boxes));
+      const yawCos=Math.cos(this.yaw),yawSin=Math.sin(this.yaw),heights=this.wheelHeights;
+      for(let i=0;i<WHEEL_CONTACTS.length;i++){const w=WHEEL_CONTACTS[i];heights[i]=wheelHeight(this.position.x+yawCos*w.x+yawSin*w.z,this.position.z-yawSin*w.x+yawCos*w.z,w.r,this.boxes);}
       const rear=(heights[1]+heights[2])/2,target=rear+(heights[0]-rear)*.034/.09;
       const oldHeight=this.position.y;
       this.heightSpeed+=(1800*(target-this.position.y)-65*this.heightSpeed)*h;
@@ -203,7 +208,7 @@ export class TricyclePhysics {
     this.rideFor+=h;if(this.rideFor>.65&&this.speed>.12)this.laughing=true;
     b.canSleep=false;b.wake();
     const angle=this.yaw+this.steering,c=Math.cos(angle),s=Math.sin(angle),omega=((this.yaw-oldYaw)+(this.steering-oldSteering))/h;
-    this.rotation.setFromEuler(new Euler(this.pitch,this.yaw,this.roll,'YXZ')).multiply(new Quaternion().setFromAxisAngle(new Vector3(0,1,0),this.steering));
+    this.rotation.setFromEuler(this.riderEuler.set(this.pitch,this.yaw,this.roll,'YXZ')).multiply(this.steeringRotation.setFromAxisAngle(this.steeringAxis,this.steering));
     for(let i=0;i<b.mass.length;i++) {
       const j=i*3,rx=b.rest[j],ry=b.rest[j+1],rz=b.rest[j+2];
       const foot=Math.max(0,1-ry/.026),hand=Math.max(0,Math.min(1,(Math.abs(rx)-.030)/.013));

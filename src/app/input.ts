@@ -36,7 +36,7 @@ export class Input {
   menuOpen:()=>boolean=()=>false;
   private readonly chase:TricycleCamera;
   private readonly soccerCamera:SoccerCameraPitch;
-  private vehicleHints=false;
+  private hintMode='';
   readonly controls:OrbitControls;
   private keys=new Set<string>();
   private touchKeys=new Map<number,string>();
@@ -45,6 +45,8 @@ export class Input {
   private joystickZ=0;
   private joystickElement:HTMLButtonElement|null=null;
   private joystickKnob:HTMLElement|null=null;
+  private readonly hintLabels:HTMLElement[];
+  private readonly jumpElement:HTMLButtonElement|null;
   private grabs=new Map<number,PointerGrab>();
   private raycaster=new THREE.Raycaster();
   private grabBVH:SurfaceBVH;
@@ -87,6 +89,8 @@ export class Input {
     document.addEventListener('visibilitychange',()=>{if(document.hidden) this.clear();},{signal});
     this.joystickElement=document.querySelector<HTMLButtonElement>('[data-joystick]');
     this.joystickKnob=this.joystickElement?.querySelector<HTMLElement>('.joystick-knob')??null;
+    this.hintLabels=Array.from(document.querySelectorAll<HTMLElement>('.desktop-hints .hint-label'));
+    this.jumpElement=document.querySelector<HTMLButtonElement>('.touch-controls .jump');
     if(this.joystickElement) {
       this.joystickElement.addEventListener('pointerdown',this.joystickStart,{signal});
       this.joystickElement.addEventListener('pointermove',this.joystickMove,{passive:false,signal});
@@ -287,15 +291,14 @@ export class Input {
     this.controls.maxDistance=.42;
     this.soccerCamera.setFieldState(this.camera,soccer);
     this.controls.maxPolarAngle=this.soccerCamera.needsWidePolarLimit?1.46:Math.PI/2-THREE.MathUtils.degToRad(this.camera.fov)/2-.10;
-    const riding=this.ridingVehicle();
-    if(riding!==this.vehicleHints) {
-      this.vehicleHints=riding;
-      const hint=document.querySelector('.desktop-hints .hint-label');if(hint)hint.textContent=riding?'pedal · steer':'wander';
+    const riding=this.ridingVehicle(),mode=soccer?'soccer':riding?'vehicle':'walk';
+    if(mode!==this.hintMode) {
+      this.hintMode=mode;
+      if(this.hintLabels[0])this.hintLabels[0].textContent=soccer?'run':riding?'pedal · steer':'wander';
+      if(this.hintLabels[1])this.hintLabels[1].textContent='hop';
       this.joystickElement?.setAttribute('aria-label',riding?'Steer and pedal':'Move');
-      const jump=document.querySelector<HTMLButtonElement>('.touch-controls .jump');if(jump){jump.disabled=riding;jump.style.opacity=riding?'.3':'';}
+      const jump=this.jumpElement;if(jump){jump.disabled=riding;jump.style.opacity=riding?'.3':'';jump.setAttribute('aria-label','Jump');const caption=jump.querySelector('span');if(caption)caption.textContent='hop';}
     }
-    const jump=document.querySelector<HTMLButtonElement>('.touch-controls .jump');if(jump){jump.disabled=riding;jump.style.opacity=riding?'.3':'';jump.setAttribute('aria-label','Jump');const caption=jump.querySelector('span');if(caption)caption.textContent='hop';}
-    const labels=document.querySelectorAll('.desktop-hints .hint-label');if(labels[0])labels[0].textContent=soccer?'run':riding?'pedal · steer':'wander';if(labels[1])labels[1].textContent='hop';
     this.controls.minDistance=this.facilityCameraDistance()??.135;
     // External resets must never leave pointer capture or orbit state wedged.
     for(const [id,state] of this.grabs)if(!this.body.grabs.includes(state.grab))this.finishRelease(id);

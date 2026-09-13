@@ -46,7 +46,11 @@ is waiting there on return. Reset stays in the current world.
 
 The toy and soccer worlds are imported and built on their first passage. The existing loading
 screen paints before construction, collision warmup and first-visit shader compilation.
-Soccer starts its facility-module load and grass-texture load concurrently. Physics
+Soccer starts its facility-module load and grass-texture load concurrently, then
+starts the four grass texture uploads before procedural stadium construction so CPU
+construction can overlap GPU transfer. Destination-specific procedural audio is also
+prepared under the loading card (the tricycle loops, or Soccer's shared grass-noise
+bed and ball-event samples) whenever Web Audio has already been unlocked. Physics
 pauses; the destination receives a hidden first render and GPU completion fence
 before the overlay closes. Each fully built destination compiles only once; later
 passages reuse both geometry and hot pipelines while retaining the hidden render/fence.

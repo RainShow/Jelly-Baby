@@ -44,7 +44,7 @@ class SurfaceBVH {
     visit(this.root);
   }
   /** @returns {{t:number,u:number,v:number,distance:number}|null} */
-  hit(o,d,maxDistance=Infinity) {
+  hit(o,d,maxDistance=Infinity,out=null) {
     const p=this.p,ix=this.index;let nearest=maxDistance,result=null;
     const box=node=>{
       let lo=0,hi=nearest;
@@ -72,7 +72,10 @@ class SurfaceBVH {
         const qx=sy*e1z-sz*e1y,qy=sz*e1x-sx*e1z,qz=sx*e1y-sy*e1x;
         const v=(d[0]*qx+d[1]*qy+d[2]*qz)*inv;if(v<0||u+v>1)continue;
         const distance=(e2x*qx+e2y*qy+e2z*qz)*inv;
-        if(distance>1e-7&&distance<nearest){nearest=distance;result={t,u,v,distance};}
+        if(distance>1e-7&&distance<nearest){
+          nearest=distance;
+          if(out){out.t=t;out.u=u;out.v=v;out.distance=distance;result=out;}else result={t,u,v,distance};
+        }
       }
     };
     visit(this.root);return result;
@@ -93,28 +96,35 @@ class SurfaceBVH {
   }
 }
 
-function refractRay(d,n,n1,n2) {
+function refractRay(d,n,n1,n2,out=null) {
   const cosine=clamp(-(d[0]*n[0]+d[1]*n[1]+d[2]*n[2]),0,1),eta=n1/n2;
   const k=1-eta*eta*(1-cosine*cosine);
   if(k<0)return null;
   const ct=Math.sqrt(k),a=eta*cosine-ct;
   const rs=(n1*cosine-n2*ct)/(n1*cosine+n2*ct+1e-20);
   const rp=(n2*cosine-n1*ct)/(n2*cosine+n1*ct+1e-20);
-  return {direction:[eta*d[0]+a*n[0],eta*d[1]+a*n[1],eta*d[2]+a*n[2]],transmission:1-(rs*rs+rp*rp)/2};
+  const result=out??{direction:[0,0,0],transmission:0},direction=result.direction;
+  direction[0]=eta*d[0]+a*n[0];direction[1]=eta*d[1]+a*n[1];direction[2]=eta*d[2]+a*n[2];
+  result.transmission=1-(rs*rs+rp*rp)/2;return result;
 }
 
 /** Keep the existing view-thickness algorithm independent from caustic generation. */
 function updateViewThickness(surface,bvh,camera) {
   const p=surface.positions,n=surface.geometry.attributes.normal.array;
   const thickness=surface.geometry.attributes.opticalThickness;
+  // This runs over every optical vertex in the worker. Reuse ray/refraction
+  // scratch instead of creating several arrays/objects per vertex.
+  const ray=[0,0,0],normal=[0,0,0],origin=[0,0,0];
+  const refracted={direction:[0,0,0],transmission:0},hitScratch={t:0,u:0,v:0,distance:0};
   for(let i=0;i<p.length;i+=3) {
     let dx=p[i]-camera.position.x,dy=p[i+1]-camera.position.y,dz=p[i+2]-camera.position.z;
     const length=Math.hypot(dx,dy,dz)||1;dx/=length;dy/=length;dz/=length;
-    const normal=[n[i],n[i+1],n[i+2]];
+    normal[0]=n[i];normal[1]=n[i+1];normal[2]=n[i+2];
     if(dx*normal[0]+dy*normal[1]+dz*normal[2]>-.01)continue;
-    const refraction=refractRay([dx,dy,dz],normal,1,IOR);if(!refraction)continue;
-    const dir=refraction.direction,o=[p[i]+dir[0]*2e-6,p[i+1]+dir[1]*2e-6,p[i+2]+dir[2]*2e-6];
-    const hit=bvh.hit(o,dir);
+    ray[0]=dx;ray[1]=dy;ray[2]=dz;
+    const refraction=refractRay(ray,normal,1,IOR,refracted);if(!refraction)continue;
+    const dir=refraction.direction;origin[0]=p[i]+dir[0]*2e-6;origin[1]=p[i+1]+dir[1]*2e-6;origin[2]=p[i+2]+dir[2]*2e-6;
+    const hit=bvh.hit(origin,dir,Infinity,hitScratch);
     thickness.array[i/3]=hit?clamp(hit.distance,.0002,.16):.002;
   }
   thickness.needsUpdate=true;
@@ -129,6 +139,7 @@ class OpticalShadowField {
     this.contact=new Float32Array(this.size*this.size);
     this.blurScratch=new Float32Array(this.size*this.size);
     this.shadowBytes=new Uint8Array(this.size*this.size*4);
+    this.triangleA=[0,0];this.triangleB=[0,0];this.triangleC=[0,0];
   }
   rasterTriangle(a,b,c,buffer,value) {
     const n=this.size,scale=n/this.span;
@@ -156,19 +167,22 @@ class OpticalShadowField {
   }
   update(body) {
     this.shadow.fill(0);this.contact.fill(0);
-    const D=[this.lightDirection.x,this.lightDirection.y,this.lightDirection.z];
+    const dx=this.lightDirection.x,dy=this.lightDirection.y,dz=this.lightDirection.z;
     const p=this.surface.positions,ix=this.surface.indices,box=this.surface.geometry.boundingBox;
     const cx=body.center.x,cz=body.center.z;
     this.span=Math.max(.22,(box.max.x-box.min.x)*2+.04,(box.max.z-box.min.z)*2+.04,
-      box.max.y*Math.max(Math.abs(D[0]/D[1]),Math.abs(D[2]/D[1]))*2+.12);
-    const projectedX=cx-body.center.y*D[0]/D[1],projectedZ=cz-body.center.y*D[2]/D[1];
+      box.max.y*Math.max(Math.abs(dx/dy),Math.abs(dz/dy))*2+.12);
+    const projectedX=cx-body.center.y*dx/dy,projectedZ=cz-body.center.y*dz/dy;
     this.origin.set((cx+projectedX)/2-this.span/2,(cz+projectedZ)/2-this.span/2);
+    const a=this.triangleA,b=this.triangleB,c=this.triangleC;
     for(let t=0;t<ix.length;t+=3) {
-      const vertices=[ix[t]*3,ix[t+1]*3,ix[t+2]*3];
-      const projected=vertices.map(i=>[p[i]-p[i+1]*D[0]/D[1],p[i+2]-p[i+1]*D[2]/D[1]]);
-      this.rasterTriangle(...projected,this.shadow,1);
-      const height=(p[vertices[0]+1]+p[vertices[1]+1]+p[vertices[2]+1])/3;
-      if(height<.016)this.rasterTriangle(...vertices.map(i=>[p[i],p[i+2]]),this.contact,Math.exp(-height/.0028));
+      const ia=ix[t]*3,ib=ix[t+1]*3,ic=ix[t+2]*3;
+      a[0]=p[ia]-p[ia+1]*dx/dy;a[1]=p[ia+2]-p[ia+1]*dz/dy;
+      b[0]=p[ib]-p[ib+1]*dx/dy;b[1]=p[ib+2]-p[ib+1]*dz/dy;
+      c[0]=p[ic]-p[ic+1]*dx/dy;c[1]=p[ic+2]-p[ic+1]*dz/dy;
+      this.rasterTriangle(a,b,c,this.shadow,1);
+      const height=(p[ia+1]+p[ib+1]+p[ic+1])/3;
+      if(height<.016){a[0]=p[ia];a[1]=p[ia+2];b[0]=p[ib];b[1]=p[ib+2];c[0]=p[ic];c[1]=p[ic+2];this.rasterTriangle(a,b,c,this.contact,Math.exp(-height/.0028));}
     }
     this.blur(this.shadow);this.blur(this.contact);
     for(let i=0;i<this.size*this.size;i++) {
