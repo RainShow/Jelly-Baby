@@ -132,6 +132,7 @@ one regression is needed.
 | `npm run test:collision-broadphase` | Compare optimized and exhaustive contacts exactly, verify safe rejection/contact chains, and measure collision CPU cost. |
 | `npm run test:facility-shadows` | Verify facility projection and invalidation. |
 | `npm run test:caustics` | Verify the universal `receiveCaustics` opt-in, material deduplication, emissive preservation, and lighting updates. |
+| `node --experimental-strip-types scripts/verify-caustic-gpu.mjs` | Verify optical hierarchy topology. Set `JELLY_WEBGPU_MODULE` to a native `webgpu/index.js` module to also execute production compute/render shaders and check geometric transport and receiver interception on Metal without a dev server. |
 | `npm run test:facility-sound` | Verify motion-event timing and procedural audio. |
 | `npm run test:multitouch` | Verify simultaneous grips and cleanup paths. |
 | `npm run test:orientation` | Compile and compare indexed repair with full-scan native repair; requires a WASM-capable clang. |

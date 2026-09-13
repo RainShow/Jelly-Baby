@@ -144,8 +144,10 @@ use transparent ground overlays or nearly coplanar shadow geometry.
 The tabletop is no longer a one-off caustic consumer. It sets
 `receiveCaustics = true` and registers with the same `CausticReceivers` layer as
 scene facilities, while retaining its existing wood-albedo and facility-shadow
-overrides. Facility PBR materials receive the same floor-projected caustic field
-through their own albedo nodes.
+overrides. Facility PBR materials receive geometric caustic irradiance through
+their own albedo nodes. Outgoing rays intersect the actual registered receiver
+geometry; raised surfaces no longer sample a back-projected floor field. The
+receiver atlas checks object identity and position during reconstruction.
 
 ## Baby material and render order
 

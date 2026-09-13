@@ -1,15 +1,15 @@
 import * as THREE from 'three/webgpu';
-import { float, normalWorldGeometry, positionWorld, texture, uniform, vec3 } from 'three/tsl';
+import { float, uniform, vec3 } from 'three/tsl';
 import type Node from 'three/src/nodes/core/Node.js';
 import type { RefractiveLightField } from './refractive-light.js';
 import type { FacilityShadows } from '../../facilities/shadows.ts';
 import { groundReceiver } from '../scene/ground-receiver.ts';
 
-export type CausticLighting={color:THREE.Color;irradiance:number};
+export type CausticLighting={color:THREE.Color;irradiance:number;sourceSpread?:THREE.Vector3};
 type ReceiverOptions={albedo?:Node<'vec3'>;visibility?:Node<'float'>};
 type CausticMaterial=THREE.MeshStandardNodeMaterial|THREE.MeshPhysicalNodeMaterial;
 
-/** Shared receiver-side binding for the existing floor-projected jelly caustic field. */
+/** Scene-wide opt-in binding for geometric GPU caustics. */
 export class CausticReceivers {
   readonly irradianceNode=uniform(0);
   readonly colorNode=uniform(new THREE.Color());
@@ -32,13 +32,16 @@ export class CausticReceivers {
   /** Register one mesh after setting `mesh.receiveCaustics = true`. */
   register(mesh:THREE.Mesh,options:ReceiverOptions={}) {
     if(!mesh.receiveCaustics)return;
-    if(!this.meshes.has(mesh))this.meshes.set(mesh,options);
+    if(!this.meshes.has(mesh)){this.meshes.set(mesh,options);this.optics.registerReceiver(mesh);}
     for(const material of Array.isArray(mesh.material)?mesh.material:[mesh.material])this.registerMaterial(material,options);
     for(const source of this.sources)source.register(mesh,options);
   }
 
   addSource(optics:RefractiveLightField) {
-    const source=new CausticReceivers(optics,{color:this.colorNode.value,irradiance:this.irradianceNode.value*Math.PI});
+    optics.setRegistry(this.optics.registry);
+    if(this.optics.camera)optics.setCamera(this.optics.camera);
+    optics.setSourceSpread(this.optics.spreadNode.value);
+    const source=new CausticReceivers(optics,{color:this.colorNode.value,irradiance:this.irradianceNode.value*Math.PI,sourceSpread:this.optics.spreadNode.value});
     for(const [mesh,options] of this.meshes)source.register(mesh,options);
     this.sources.push(source);
     for(const ground of this.grounds)this.bindGround(ground);
@@ -47,8 +50,10 @@ export class CausticReceivers {
 
   registerGround(mesh:THREE.Mesh,albedo:Node<'vec3'>,facilities:FacilityShadows,fraction:Node<'float'>,height=0) {
     const ground={mesh,albedo,facilities,fraction,height};this.grounds.push(ground);
-    const visibility=this.bindGround(ground);
-    mesh.receiveCaustics=true;this.register(mesh,{albedo,visibility});
+    this.bindGround(ground);
+    // Outgoing rays now test actual opaque occlusion. The incoming-light shadow
+    // mask belongs only to ground shading, not to refracted irradiance.
+    mesh.receiveCaustics=true;this.register(mesh,{albedo});
   }
 
   private bindGround(ground:typeof this.grounds[number]) {
@@ -68,26 +73,10 @@ export class CausticReceivers {
     const materialColor=(lit.colorNode??uniform(lit.color)) as Node<'vec3'>;
     const albedo=options.albedo??materialColor;
     const visibility=options.visibility??float(1);
-    // The texture stores irradiance where refracted rays reach y=0. Sampling it
-    // with raw world XZ extrudes every bright floor texel vertically, which made
-    // tall props glow all the way up their sides. Reconstruct the corresponding
-    // floor point for this fragment along the measured light direction instead.
-    // This keeps the existing caustic field unchanged while making raised
-    // reception spatially consistent with the direction that produced it.
-    const lightDirection=this.optics.lightDirectionNode as unknown as Node<'vec3'>;
-    const floorDistance=positionWorld.y.max(0).negate().div(lightDirection.y.min(-1e-4));
-    const projectedXZ=positionWorld.xz.add(lightDirection.xz.mul(floorDistance));
-    const uv=projectedXZ.sub(this.optics.originNode).div(this.optics.spanNode);
-    const inside=float(uv.x.greaterThan(0).and(uv.x.lessThan(1)).and(uv.y.greaterThan(0)).and(uv.y.lessThan(1)));
-    const sample=texture(this.optics.lightTexture,uv);
-    // lightTexture is calibrated as irradiance on a horizontal receiver. Convert
-    // that response to the actual geometric surface orientation, but never let
-    // an approximate raised receiver become brighter than the established floor
-    // result. Horizontal upward-facing surfaces therefore remain exactly 1.0.
-    const horizontalFacing=lightDirection.y.abs().max(1e-4);
-    const surfaceFacing=normalWorldGeometry.dot(lightDirection.negate()).max(0);
-    const incidence=surfaceFacing.div(horizontalFacing).clamp(0,1);
-    const strength=this.irradianceNode.mul(this.enabledNode).mul(inside).mul(visibility).mul(incidence);
+    // The landing surface and its incidence are already part of beam transport.
+    // Applying the incoming-light floor projection here would bend the light twice.
+    const sample=this.optics.sampleIrradiance() as unknown as Node<'vec3'>;
+    const strength=this.irradianceNode.mul(this.enabledNode).mul(visibility);
     // Keep RGB products component-wise. @types/three's fluent mul overloads
     // are scalar-biased for vec3 nodes even though TSL supports vec3*vec3.
     const caustic=vec3(
@@ -102,6 +91,7 @@ export class CausticReceivers {
 
   setLighting(light:CausticLighting) {
     this.irradianceNode.value=light.irradiance/Math.PI;this.colorNode.value.copy(light.color);
+    this.optics.setSourceSpread(light.sourceSpread);
     for(const source of this.sources)source.setLighting(light);
   }
 

@@ -30,83 +30,108 @@ triangle hierarchy once and refits its node bounds as positions change. It is
 used for visible picking, proxy thickness rays, and worker-side tracing without
 the cost of a linear scan over every triangle.
 
-## GPU caustic field
+## GPU geometric caustics
 
-[`RefractiveLightField`](../src/graphics/optics/refractive-light.js) creates four
-render targets:
+[`RefractiveLightField`](../src/graphics/optics/gpu-caustics.js) owns GPU
+transport independently of the worker's shadow and thickness fields.
+[`caustic-kernels.js`](../src/graphics/optics/caustic-kernels.js) contains WGSL
+functions composed and bound through TSL; there are no private GPU pipelines,
+depth-derived lens normals, CPU caustic readbacks, or temporal accumulation.
 
-| Target | Size | Role |
-| --- | ---: | --- |
-| Front depth | 128², half-float + depth | Light-space front intersection. |
-| Back depth | 128², half-float + depth | Light-space back intersection. |
-| Raw caustic | 160², half-float | Additive projected transmitted energy. |
-| Filtered caustic | 160², half-float | Shared receiver texture exposed as `lightTexture`. |
+Each moving frame uploads cage positions and nodal deformation gradients.
+A compute pass reconstructs the optical proxy's positions and smooth normals
+with the same embedding/cofactor transform as the visible surface. Positions
+are relative to the body's center to preserve precision across worlds.
+A static depth-first triangle BVH is refitted bottom-up in ordered GPU dispatches.
+Escape links permit stackless traversal with no fixed-size traversal stack.
 
-The optical surface uses TSL attributes for four cage IDs and weights. A storage
-buffer packs the current cage positions, and the GPU position node reconstructs
-each proxy vertex directly from that buffer. This keeps the depth and caustic
-passes on the current shape without transferring a full visible mesh every
-frame.
+Four deterministic angular quadrature directions use the measured HDR window's
+second angular moment. Their weights sum to one; a zero-spread source reduces
+to the directional case without changing flux. Sampling bounds tightly enclose
+the jelly independently of the receiving footprint.
 
-For a shape update, the field:
+The transport traces actual triangles for entry, exit, total internal reflection,
+and re-entry, using exact unpolarized Fresnel transmission and Beer–Lambert RGB
+absorption. It follows the transmitted branch at partial Fresnel interfaces and
+the reflected branch at total internal reflection. Eight boundary events bound
+work; paths still trapped at that limit contribute no light. Outgoing rays stop
+at the first registered opaque receiver, including raised surfaces. Receiver
+interception before re-entry takes precedence over the next jelly boundary.
 
-1. computes a light-space receiver span and origin around the body and its
-   projected footprint;
-2. positions an orthographic light camera along the measured window direction;
-3. renders front and back light-space depth, with the surface drawn from the
-   front and back sides into separate targets;
-4. reconstructs entry and exit points and normals from neighboring depth texels;
-5. refracts the incoming ray into the jelly, iterates the exit intersection
-   against the back depth field several times, and refracts back into air;
-6. intersects the exiting ray with the planar tabletop receiver;
-7. rejects invalid rays, folds outside the target, total internal reflection,
-   and rays that do not travel down toward the receiver;
-8. evaluates an inverse screen-space Jacobian to concentrate energy at folds,
-   caps pathological singularities, and multiplies by Schlick entry/exit
-   transmission and Beer–Lambert absorption; and
-9. rasterizes an 80×80 source grid additively into the raw target, then runs a
-   small nine-tap reconstruction filter into the final target.
+A 32×32 base grid per angular sample is refined locally to 64×64. Cell-center
+rays measure nonlinear landing displacement, transmission changes, visibility
+changes, and optical branch changes. Hysteresis stabilizes refinement decisions;
+required edge rays are traced in the same frame. Parent and child bundles are
+mutually exclusive and partition the same incident power. Invalid rays and
+incompatible path/surface branches never form a bridge.
 
-The caustic material is tone-map-exempt and additive. Its RGB energy uses one
-shared refracted path; the selected flavor's three absorption coefficients are
-applied independently along that path. This is a perceptual real-time optical
-model rather than three separately traced spectral simulations.
+[`caustic-beams.js`](../src/graphics/optics/caustic-beams.js) rasterizes connected
+beam triangles through expanded bounding quads. Fragment-local polygon clipping
+integrates triangle/pixel overlap, preserving thin subpixel footprints. Density
+comes from transported power divided by actual receiving area, with additive
+RGBA16F accumulation. Collapsed footprints deposit their power in a containing
+pixel using measured receiver pixel area. There is no arbitrary 18× focus cap.
+The half-float storage ceiling remains 60,000.
 
-[`CausticReceivers`](../src/graphics/optics/caustic-receivers.ts) is the
-receiver-side interface for that same field. The projection remains the existing
-planar XZ/tabletop projection; universal reception does not add another caustic
-simulation or rerun refraction per object. A plausible scene receiver sets
-`receiveCaustics = true` and is registered once with the receiver layer. The
-layer injects the existing caustic texture into PBR node-material emissive
-response, multiplied by the receiver albedo and the same measured irradiance and
-source color used by the tabletop. For raised geometry, each fragment is first
-projected from its world position down to the y=0 caustic plane along the measured
-light direction before sampling. This is essential: sampling raw world XZ would
-vertically extrude every bright floor texel through tall props. The sampled energy
-is also multiplied by geometric light-facing incidence relative to the horizontal
-receiver calibration, clamped so a raised surface cannot become brighter than the
-established floor response. Upward horizontal surfaces retain exactly the same
-caustic intensity as the tabletop. Existing emissive nodes are added to rather
-than replaced. `FacilityShadows.add(...)` opts all descendant facility meshes in
-automatically, so current and future ordinary set pieces receive caustics by
-default. The tabletop uses the same receiver layer with its existing
-facility-shadow visibility mask.
+Three 384² targets form a cropped camera atlas: RGBA32F receiver position/identity
+with depth, raw RGBA16F irradiance, and reconstructed RGBA16F irradiance exposed
+as `lightTexture`. Receiver identity
+and plane-distance checks prevent deposits from bleeding onto unrelated surfaces.
+The material lookup uses four integer taps with identity and distance checks for
+bilinear reconstruction. It does not require float32 texture filtering.
+Camera movement rerasterizes the atlas but does not retrace unchanged transport.
 
-Additional jelly bodies use independent instances of the same GPU field and
-worker transport. `CausticReceivers.addSource` attaches their contributions to
-existing and future receivers. Ground receivers share `groundReceiver` for the
-tabletop and elevated floors; it combines each jelly's optical shadow/contact
-field with the existing facility projection, preserving the floor coefficients.
+Before material lookup, `caustic-reconstruction.js` applies a mild 3×3 positive
+kernel with separable weights [1, 4, 1] (sigma approximately 0.58 atlas texels).
+This smooths magnified pixel steps with one small atlas pass, leaving ray counts,
+adaptive refinement, and texture dimensions unchanged. Identity, world-distance,
+and local plane checks reject taps on unrelated surfaces. Weights include unlit
+neighbors and are normalized after surface rejection; there is no brightness
+threshold or temporal history. The extra RGBA16F target costs about 1.13 MiB per
+source. Reconstruction runs only when the atlas is rerendered.
 
-The scene rule is intentionally broad: **every opaque/material surface that could
-plausibly be illuminated by the jelly caustic should receive it**. Exceptions
-should be deliberate optical cases, such as the transmitting jelly itself or
-non-surface effects, rather than omissions made for convenience.
+## Receiver interface
 
-The field is updated only when forced, when the body surface revision changes,
-when the center moves, or when flavor absorption or the lighting mode changes. Light direction and the
-horizontal-flux correction are dynamic shader inputs. Camera-only movement
-does not rerender the caustic field.
+The public opt-in remains:
+
+```typescript
+mesh.receiveCaustics = true;
+caustics.register(mesh);
+```
+
+For a hierarchy, mark the intended meshes and call `caustics.add(root)`.
+`FacilityShadows.add(...)` continues to opt in and register descendant meshes
+automatically unless `receiveCaustics = false` is explicit. New worlds use this
+same interface. The receiver layer handles PBR node-material albedo and preserves
+existing emissive nodes; registration is deduplicated per material.
+
+[`CausticSurfaces`](../src/graphics/optics/caustic-surfaces.js) caches triangle
+hierarchies per receiver geometry. Per-source fields select visible nearby mesh
+instances, update affine transforms and bounds, and share their geometry with
+the receiver-position pass. Instanced meshes are expanded into individual
+instance transforms. CPU-updated position attributes invalidate geometry data;
+their existing BVH partition is refitted rather than rebuilt. Storage capacity
+is reused across updates. Hidden world roots do not intercept light.
+
+Receiver geometry must exist in its BufferGeometry attributes, as with the
+facility shadow system. Shader-only displacement needs a matching transport
+representation; this is not inferred from arbitrary material code.
+
+Caustics are injected as albedo × irradiance / pi, scaled by the same measured
+window color/irradiance as the environment correction. Surface incidence and
+opaque visibility are already accounted for by geometric beam landing.
+Ground shadow/contact shading retains its established coefficients, but its
+incoming-light shadow mask is not applied a second time to refracted light.
+
+Additional jellies use independent optical transport with a shared receiver
+registry. `CausticReceivers.addSource` binds their additive irradiance to existing
+and future materials and inherits camera and source spread. Ground receivers
+continue to use `groundReceiver` for worker shadow/contact data and facility
+shadow masks at the actual floor height.
+
+The scene rule remains: every plausible opaque surface should participate.
+The transmitting jelly and non-surface effects deliberately stay outside this
+receiver registry.
 
 ## Worker-backed shadow and thickness transport
 
@@ -186,18 +211,25 @@ imported by the current runtime. The live caustic path is the GPU render-target
 pipeline above; the worker currently publishes shadow/contact and thickness, not
 CPU caustic photons.
 
-## Approximation budget
+## Approximation budget and verification
 
-The optical result intentionally makes bounded choices:
+Transport uses the optical proxy, four angular quadrature nodes, bounded adaptive
+sampling, and eight boundary events. RGB shares a geometric path; absorption is
+channel-specific, but spectral dispersion and partially reflected Fresnel
+branches are not traced. The receiver atlas samples the camera-visible surface
+at finite resolution; hidden layers are not represented in that atlas. There is
+no floor-projected approximation for raised surfaces.
 
-- a reduced proxy for CPU tracing and a finite 128²/160² GPU light path;
-- a planar tabletop receiver;
-- screen/view-dependent thickness rather than a full volume solve;
-- a shared RGB refracted trajectory rather than wavelength-separated paths;
-- capped Jacobian focus and a small fixed reconstruction filter; and
-- rejection at visibility discontinuities, invalid exit rays, and unsupported
-  geometry configurations.
+Outgoing transport has a finite distance bound derived from the receiver span.
+Highly divergent rays beyond that distance are discarded. Adaptive cells that
+remain discontinuous at the finest grid are rejected rather than inventing
+connections. These limits bound work without introducing asynchronously stale
+caustic patterns.
 
-These approximations preserve the visual relationships that matter—colored
-transmission, bright folded caustics, directional shadow, and body-attached
-light—without making the render loop wait for an unbounded optical simulation.
+`scripts/verify-caustic-gpu.mjs` checks hierarchy topology in the normal suite.
+With `JELLY_WEBGPU_MODULE` pointing to the native `webgpu/index.js` runtime it
+also executes the production TSL compute and render paths on Metal, checks
+deformation and entry intersections against CPU geometry, verifies nonzero beam
+deposition, compiles receiver materials, and checks raised/hidden receiver
+interception. GPU readback is confined to that audit. Live visual assessment and
+whole-game frame timing remain separate from these numerical checks.

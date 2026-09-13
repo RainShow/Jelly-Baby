@@ -46,6 +46,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   const body=new SoftBody(cage);
   const baby=new Baby(body);scene.add(baby.group);
   const optics=new RefractiveLightField(body.cage.opticalSurface,environment.incoming,ABSORPTION);
+  optics.setCamera(camera);
   const caustics=new CausticReceivers(optics,environment);
   const facilityShadows=new FacilityShadows(environment.incoming,environment.windowFraction,caustics);
   facilityShadows.surfaces.addBaby(baby.mesh);

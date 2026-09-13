@@ -105,10 +105,28 @@ export function measureWindow(image:{data:Uint16Array;width:number;height:number
   const directionLength=Math.sqrt(directionX*directionX+directionY*directionY+directionZ*directionZ)||1;
   const direction=new THREE.Vector3(directionX/directionLength,directionY/directionLength,directionZ/directionLength);
   const lightColor=new THREE.Color().setRGB(rgbX/weightSum,rgbY/weightSum,rgbZ/weightSum,THREE.LinearSRGBColorSpace);
+  // Four deterministic angular quadrature nodes reproduce the window's second
+  // moment. Compute this from the same bright panes used for its irradiance.
+  const incoming=direction.clone().negate();
+  const right=new THREE.Vector3().crossVectors(incoming,Math.abs(incoming.z)>.96?new THREE.Vector3(0,1,0):new THREE.Vector3(0,0,1)).normalize();
+  const up=new THREE.Vector3().crossVectors(right,incoming).normalize();
+  let xx=0,xy=0,yy=0;
+  for(let y=0;y<height;y+=2)for(let x=0;x<width;x+=2){
+    const phi=((y+.5)/height-.5)*Math.PI,theta=((x+.5)/width-.5)*2*Math.PI;
+    const ray=new THREE.Vector3(Math.cos(phi)*Math.cos(theta),Math.sin(phi),Math.cos(phi)*Math.sin(theta));
+    if(labels[(y/2)*sampleWidth+x/2]<0||ray.x*emitterX+ray.y*emitterY+ray.z*emitterZ<Math.cos(.65)||phi<.03)continue;
+    const k=(y*width+x)*channelCount;
+    const l=.2126*THREE.DataUtils.fromHalfFloat(data[k])+.7152*THREE.DataUtils.fromHalfFloat(data[k+1])+.0722*THREE.DataUtils.fromHalfFloat(data[k+2]);
+    const weight=l*Math.cos(phi)*8*Math.PI*Math.PI/(width*height)*Math.sin(phi)/weightSum;
+    const cosine=Math.max(.1,ray.dot(direction)),a=-ray.dot(right)/cosine,b=-ray.dot(up)/cosine;
+    xx+=a*a*weight;xy+=a*b*weight;yy+=b*b*weight;
+  }
+  const sx=Math.sqrt(Math.max(0,xx)),shear=sx>1e-8?xy/sx:0;
+  const sourceSpread=new THREE.Vector3(sx,shear,Math.sqrt(Math.max(0,yy-shear*shear)));
   // Environment already supplies illumination: reconstruct only the window's
   // occlusion and transmitted flux on the receiver, avoiding a duplicate proxy light.
   return {
-    incoming:direction.negate(), color:lightColor,
+    incoming, color:lightColor, sourceSpread,
     windowFraction:Math.min(.88,windowIrradiance/Math.max(ambient,.001)),
     irradiance:windowIrradiance*.9,
   };

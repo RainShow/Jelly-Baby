@@ -1,23 +1,25 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three/webgpu';
-import { color, uniform } from 'three/tsl';
+import { color, uniform, vec3 } from 'three/tsl';
 import { CausticReceivers } from '../src/graphics/optics/caustic-receivers.ts';
 
 const lightTexture=new THREE.Texture();
+const registered=new Set();
 const optics={
   lightTexture,
   originNode:uniform(new THREE.Vector2(-.1,-.1)),
   spanNode:uniform(new THREE.Vector2(.2,.2)),
   lightDirectionNode:uniform(new THREE.Vector3(.494,-.748,-.443).normalize()),
+  registerReceiver(mesh){registered.add(mesh);},
+  setSourceSpread(){},
+  sampleIrradiance(){return vec3(1);},
 };
 const light={color:new THREE.Color(.8,.7,.6),irradiance:4};
 
 const receiverSource=readFileSync('src/graphics/optics/caustic-receivers.ts','utf8');
-assert(receiverSource.includes('positionWorld.y.max(0)')&&receiverSource.includes('lightDirection.xz.mul(floorDistance)'),
-  'raised receivers back-project fragments to the floor field instead of vertically extruding floor texels');
-assert(receiverSource.includes('normalWorldGeometry.dot(lightDirection.negate())')&&receiverSource.includes('.clamp(0,1)'),
-  'receiver energy is gated by geometric light-facing incidence and cannot exceed the calibrated floor response');
+assert(receiverSource.includes('sampleIrradiance()')&&!receiverSource.includes('floorDistance'),
+  'receivers use surface-specific irradiance without back-projecting along the unrefracted direction');
 const receivers=new CausticReceivers(optics,light);
 
 const material=new THREE.MeshPhysicalNodeMaterial({color:0x6f8f60});
@@ -26,6 +28,7 @@ assert.equal(mesh.receiveCaustics,undefined,'caustic reception is opt-in for arb
 receivers.register(mesh);
 assert.equal(material.emissiveNode,null,'an unmarked mesh is not modified');
 mesh.receiveCaustics=true;receivers.register(mesh);
+assert(registered.has(mesh),'the same opt-in registers geometry for actual outgoing-ray interception');
 assert(material.emissiveNode,'receiveCaustics enables the shared material caustic term');
 const once=material.emissiveNode;receivers.register(mesh);
 assert.equal(material.emissiveNode,once,'registering the same material twice never doubles caustic energy');

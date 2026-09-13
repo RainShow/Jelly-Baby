@@ -172,10 +172,10 @@ assert(Math.max(...shadowField.shadow)>.9,'deformed optical proxy casts a full d
 assert(shadowField.span<.3,'grounded receiver keeps enough resolution for shadow/contact');
 assert([...opticalSurface.geometry.attributes.opticalThickness.array].every(Number.isFinite),'finite optical thickness');
 // The caustic itself is now a GPU render pass, so the Node test verifies that the
-// GPU field graph/targets construct successfully; pixel output is covered by browser/runtime validation.
+// GPU field graph/targets construct successfully; pixel output has a separate headless GPU audit.
 const optics=new RefractiveLightField(opticalSurface,light.incoming,ABSORPTION);
 assert.equal(optics.lightTexture,optics.causticTarget.texture,'table samples the GPU caustic render target');
-assert(optics.frontTarget&&optics.backTarget&&optics.rawCausticTarget,'GPU caustic light-space targets are configured');
+assert(optics.verticesNode&&optics.boundsNode&&optics.receiverTarget&&optics.refine,'geometric GPU caustic buffers and receiver atlas are configured');
 optics.dispose();
 console.log('PASS — settle, walk, turn, jump, grab, release, recovery, optical shadow/thickness and GPU caustic graph; seconds:',(performance.now()-started)/1000);
 // Keep facility coverage modular while including the bed in the main command.
