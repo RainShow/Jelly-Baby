@@ -191,9 +191,14 @@ and then appear a second time through the body.
 2. adds restrained bloom with threshold `.075`, strength `.18`, and radius
    `1.6`;
 3. applies a slight cool/bright channel balance;
-4. applies a subtle radial vignette; and
-5. hands the result to the renderer's one AgX/output transform.
+4. applies a cheap high-contrast pre-grade around linear 18% middle gray, with
+   highlights left in HDR for the renderer's AgX shoulder instead of being
+   clipped in the composite;
+5. applies a subtle radial vignette; and
+6. hands the result to the renderer's one AgX/output transform.
 
+The contrast grade is arithmetic inside the existing full-screen composite, so
+it does not add another render target, texture sample, or post-processing pass.
 The composite owns and disposes its scene pass, bloom node, and pipeline. There
 is no second tone-map stage hidden in the post process.
 
