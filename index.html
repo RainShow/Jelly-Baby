@@ -9,7 +9,6 @@
     <!-- Every item below is mandatory for the first playable frame. Discover
          them before the module graph/WebGPU initialization so transfer/decode
          overlaps boot instead of starting only after renderer creation. -->
-    <link rel="modulepreload" href="/src/app/runtime.ts" />
     <link rel="preload" href="/src/assets/bg_room_studio.rgba16f" as="fetch" crossorigin="anonymous" />
     <link rel="preload" href="/src/assets/night.rgba16f" as="fetch" crossorigin="anonymous" />
     <link rel="preload" href="/src/assets/model/jelly-baby.bin" as="fetch" crossorigin="anonymous" />

@@ -45,7 +45,7 @@ local `try` block still reaches the visible error card.
 
 `startGame` performs the following work in order:
 
-1. `index.html` module-preloads the runtime and preloads both generated RGBA16F environments, the jelly binary + manifest, and three wood maps so transfer can overlap WebGPU startup. The authored day/night EXRs are development inputs rather than browser decode costs.
+1. Vite injects a module preload for the runtime (the transformed source URL in development and the emitted hashed JavaScript chunk in production), while `index.html` preloads both generated RGBA16F environments, the jelly binary + manifest, and three wood maps. This lets transfer overlap WebGPU startup without publishing raw TypeScript. The authored day/night EXRs are development inputs rather than browser decode costs.
 2. Create and initialize the WebGPU renderer, append its canvas to `#viewport`,
    and construct `JellySound` early so the first user gesture can unlock Web
    Audio while the rest of the scene loads.

@@ -8,7 +8,7 @@ source and the verification suite exercises the same modules used by the game.
 
 `src/assets/` is runtime-only: files there are referenced by the app and are eligible for Vite emission. Authored inputs that exist only to generate runtime assets live under `dev-assets/`, so a normal `npm run build` does not copy them into `dist/`.
 
-The assets required during startup (`bg_room_studio.rgba16f`, `night.rgba16f`, the jelly binary + manifest, and the three wood maps) are declared as HTML preloads. The runtime module is also module-preloaded. Runtime startup prepares both day and night environments, the model, and the table texture set before entry; Soccer remains lazy because it is destination-specific.
+The assets required during startup (`bg_room_studio.rgba16f`, `night.rgba16f`, the jelly binary + manifest, and the three wood maps) are declared as HTML preloads. A Vite HTML-transform plugin also module-preloads the runtime: it uses the transformed source URL during development and resolves the emitted hashed JavaScript chunk during production builds, so raw TypeScript is never copied into `dist/`. Runtime startup prepares both day and night environments, the model, and the table texture set before entry; Soccer remains lazy because it is destination-specific.
 The packed jelly parser keeps the full-resolution binding typed arrays and builds
 small contact binding objects only for authored contact vertices; grab interpolation
 reads the same binding arrays directly instead of materializing per-vertex stencil
