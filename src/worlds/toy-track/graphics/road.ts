@@ -29,6 +29,11 @@ export function makeToyRoad(root:T.Group) {
   }
   geometry.setAttribute('uv',new T.BufferAttribute(roadUV,2));
   const material=enamel(0x74aaa8,.48);
+  // The road is a very thin slab viewed from the tricycle's grazing chase
+  // camera over the much larger tabletop receiver. Give only this material
+  // deterministic depth ownership so the wood plane cannot flash through the
+  // driving surface without moving the visual or physical road height.
+  material.polygonOffset=true;material.polygonOffsetFactor=-1;material.polygonOffsetUnits=-1;
   // Position-derived start checker has continuous coordinates across the loop seam.
   const start=trackPoint(0),tangent=trackCurve.getTangentAt(0),delta=positionLocal.xz.sub(vec2(start.x,start.z));
   const along=delta.dot(vec2(tangent.x,tangent.z)),across=delta.dot(vec2(tangent.z,-tangent.x));

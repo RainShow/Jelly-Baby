@@ -13,6 +13,10 @@ import { auditGeometry, logAuditReport } from './geometry-quality-kit/geometry-a
 const body=new SoftBody(loadModel()),grips=fitGrips(body);
 console.log('Skin-fitted grip contacts:',grips);
 const bike=new Tricycle(grips,true),portal=new JellyPortal(0,0,true),track=new ToyTrack(true);
+const road=track.group.getObjectByName('closed-road-with-integral-curbs');
+assert(road?.isMesh,'track retains its integral road mesh');
+assert.equal(road.material.polygonOffset,true,'road owns depth against the tabletop receiver');
+assert(road.material.polygonOffsetFactor<0&&road.material.polygonOffsetUnits<0,'road depth bias pulls its surface toward the camera');
 portal.group.updateMatrixWorld(true);
 const portalTrays=['front','back'].map(face=>portal.group.getObjectByName(`rubber-undertray-${face}`));
 assert(portalTrays.every(Boolean),'portal has mirrored continuous rubber undertrays');

@@ -49,6 +49,11 @@ inherit the same twofold scenery scale. These envelopes are not tricycle
 obstacles because the road boundary already keeps the vehicle out of the tree
 areas.
 
+The integral road material has a small camera-facing depth bias so its thin slab
+keeps deterministic ownership over the much larger wooden tabletop receiver at
+the mounted camera's grazing angle. This is render-only: the authored road top,
+wheel support height, obstacle placement and walking collision remain unchanged.
+
 Static parts are baked in assembly-local coordinates and merged by finish. The
 vehicle batches each wheel, saddle and fork shell separately to preserve motion.
 Construction is deterministic, with no per-frame geometry generation.
