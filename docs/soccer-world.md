@@ -58,5 +58,11 @@ loose-ball challenges, behind-goalie rescue and post-save clearance. Prediction
 still has finite reaction/error, and saves remain bounded by physical movement,
 body lean, reach and jumps. It never teleports to the ball.
 
+The blueberry keeper also has a separate personality layer driving its existing
+face: it may laugh after saves or during an occasional quiet confident moment,
+and cries after conceding. Small randomized reaction hops are restricted to
+dead-ball restart windows, so the visual variation cannot interrupt live
+goalkeeping decisions.
+
 See [soccer physics](soccer-physics.md) and
 [soccer geometry and collision](soccer-geometry.md) for implementation contracts.

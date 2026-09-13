@@ -52,6 +52,15 @@ applied back to the live keeper contact patch. This improves clearances without
 increasing initial save coverage, so finite speed, reaction delay, prediction
 error and jump cooldown still leave corners and fast shots beatable.
 
+Keeper personality is deliberately layered outside those goalkeeping targets.
+Strong saves can trigger a short laugh, and a rare brief chuckle can happen
+while the keeper is calmly set with the ball well upfield. Conceding triggers a
+cry reaction. Save/goal reactions may also queue one small hop, but that hop is
+allowed to execute only while the ball is in the existing dead-ball/reset
+window; live intercept, rescue, challenge and clearance movement is never
+replaced or delayed by personality behavior. Reaction durations and occurrence
+are randomized, while the functional keeper policy remains unchanged.
+
 Player/keeper collision uses a moving compound body envelope and reciprocal
 finite-mass recoil. It preserves separate core, head, arms and lower body rather
 than filling the silhouette with one large box.

@@ -3,6 +3,7 @@ import { SoftBody } from '../../physics/soft-body.js';
 import { PHYS, clamp } from '../../physics/constants.js';
 import { BALL, FIELD, GOAL, onSoccerField } from './layout.ts';
 import { GOALIE_BACK_Z, GOALIE_FRONT_Z, GOALIE_HOME_Z, GOALIE_SIDE_LIMIT, GoalieBrain } from './goalie-brain.ts';
+import { GoaliePersonality } from './goalie-personality.ts';
 
 const GOALIE_MAX_SPEED=.32;
 
@@ -86,6 +87,7 @@ export class SoccerPhysics {
   private goalieClearance=0;
   private goalieTouchCooldown=0;
   private readonly goalieBrain=new GoalieBrain();
+  private readonly goaliePersonality=new GoaliePersonality();
   private readonly rotation=new Quaternion();
   private readonly normal=new Vector3();
   private readonly point=new Vector3();
@@ -98,6 +100,8 @@ export class SoccerPhysics {
   get onField(){return onSoccerField(this.body.center.x,this.body.center.z);}
   get crying(){return false;}
   get laughing(){return this.celebration>0;}
+  get goalieCrying(){return this.goaliePersonality.crying;}
+  get goalieLaughing(){return this.goaliePersonality.laughing;}
   private emit(kind:SoccerEvent,strength:number) {
     if(kind==='goal'||this.eventHold<=0){this.onEvent(kind,strength,this.ball);this.eventHold=.09;}
   }
@@ -120,6 +124,8 @@ export class SoccerPhysics {
   private thinkGoalie(h:number) {
     const p=this.ball,v=this.ballVelocity,g=this.goalie,d=this.goalieBrain.step(h,{ballX:p.x,ballY:p.y,ballZ:p.z,ballVX:v.x,ballVY:v.y,ballVZ:v.z,keeperX:g.body.center.x,keeperZ:g.body.center.z,elapsed:this.elapsed,score:this.score});
     this.goalieClearance=d.clearance;if(d.jumpSpeed>0)g.jumpSpeed=d.jumpSpeed;
+    const personalityHop=this.goaliePersonality.step(h,{mode:d.mode,ballZ:p.z,deadBall:this.resetBallIn>0,grounded:g.jumpHeight<=0&&g.jumpSpeed<=0});
+    if(personalityHop>0&&g.jumpHeight<=0&&g.jumpSpeed<=0)g.jumpSpeed=personalityHop;
     const dx=d.targetX-g.body.center.x,dz=d.targetZ-g.body.center.z;
     const active=d.mode==='rescue'||d.mode==='clear'||d.mode==='challenge',gain=active?14:d.mode==='intercept'?11:8;
     g.move.set(clamp(dx*gain,-1,1),0,clamp(dz*(active?13:9),active?-1:-.65,active?1:.65));if(g.move.length()>1)g.move.normalize();
@@ -155,6 +161,7 @@ export class SoccerPhysics {
     this.ballSpin.y+=clamp(((this.ballVelocity.x-vx)*n.z-(this.ballVelocity.z-vz)*n.x)*3,-2,2);
     if(goalie&&relative<-.025&&this.goalieTouchCooldown<=0) {
       this.applyGoalieClearance(body,weights);this.goalieTouchCooldown=.11;this.goalieBrain.notifySave(this.ball.z,this.ballVelocity.z);
+      if(relative<-.06)this.goaliePersonality.notifySave(clamp(-relative,0,1));
     }
     body.updateCenter();body.surfaceDirty=true;body.wake();
     if(relative<-.06)this.emit(goalie?'save':'bump',clamp(-relative,0,1));
@@ -183,7 +190,7 @@ export class SoccerPhysics {
       const insideMouth=Math.abs(p.x)<GOAL.width/2-r&&p.y<FIELD.y+GOAL.height-r;
       if(p.z*side>FIELD.length/2-r&&!insideMouth&&p.y<FIELD.y+FIELD.wall+r){p.z=side*(FIELD.length/2-r);if(v.z*side>0)v.z*=-.55;}
       if(insideMouth&&p.z*side>FIELD.length/2+r&&this.previousBall.z*side<=FIELD.length/2+r&&this.resetBallIn<=0) {
-        if(side===-1){this.score++;this.celebration=3;this.emit('goal',1);}this.resetBallIn=1.4;
+        if(side===-1){this.score++;this.celebration=3;this.goaliePersonality.notifyGoal();this.emit('goal',1);}this.resetBallIn=1.4;
       }
       if(p.z*side>FIELD.length/2&&Math.abs(p.x)<GOAL.width/2+r) {
         if(p.z*side>FIELD.length/2+GOAL.depth-r){p.z=side*(FIELD.length/2+GOAL.depth-r);v.z*=-.16;}
@@ -202,5 +209,5 @@ export class SoccerPhysics {
     if(dx||dz){for(let j=0;j<b.x.length;j+=3){b.x[j]+=dx;b.x[j+2]+=dz;if(dx&&b.velocity[j]*dx<0)b.velocity[j]*=-.15;if(dz&&b.velocity[j+2]*dz<0)b.velocity[j+2]*=-.15;}b.updateCenter();b.surfaceDirty=true;}
   }
   centerBall(){this.ball.set(0,FIELD.y+BALL.radius,0);this.ballVelocity.set(0,0,0);this.ballSpin.set(0,0,0);this.resetBallIn=0;}
-  reset(){this.score=0;this.elapsed=this.celebration=this.eventHold=this.goalieClearance=this.goalieTouchCooldown=0;this.goalieBrain.reset();this.centerBall();this.ballRotation.identity();this.goalie.place(0,GOALIE_HOME_Z,0);}
+  reset(){this.score=0;this.elapsed=this.celebration=this.eventHold=this.goalieClearance=this.goalieTouchCooldown=0;this.goalieBrain.reset();this.goaliePersonality.reset();this.centerBall();this.ballRotation.identity();this.goalie.place(0,GOALIE_HOME_Z,0);}
 }
