@@ -1,12 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { attribute, instanceIndex, screenCoordinate, uniform, varying, wgsl, wgslFn } from 'three/tsl';
-import { BASE_GRID, RAYS_PER_SOURCE, RAY_STRIDE, BEAM_COUNT, CAUSTIC_SIZE } from './caustic-kernels.js';
+import { BASE_GRID, RAY_STRIDE, BEAM_COUNT, CAUSTIC_SIZE } from './caustic-kernels.js';
 
 const beamCode=wgsl(`
 const B_SIZE:f32=${CAUSTIC_SIZE}.0;
 fn b_ids(id:u32,flags:ptr<storage,array<u32>,read>)->vec4u {
-  let cell=id/8u;let part=id%8u;let sample=cell/${BASE_GRID*BASE_GRID}u;let xy=cell%${BASE_GRID*BASE_GRID}u;
-  let root=sample*${RAYS_PER_SOURCE}u+(xy/${BASE_GRID}u)*2u*${RAY_STRIDE}u+(xy%${BASE_GRID}u)*2u;
+  let cell=id/8u;let part=id%8u;
+  let root=(cell/${BASE_GRID}u)*2u*${RAY_STRIDE}u+(cell%${BASE_GRID}u)*2u;
   let refined=(*flags)[cell]>0u;
   if(!refined && part>=2u){return vec4u(0u);}
   let step=select(2u,1u,refined);let sub=select(0u,part/2u,refined);

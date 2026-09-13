@@ -67,7 +67,7 @@ export class RefractiveLightField {
     this.refits=this.hierarchy.refitLevels.map(level=>refitKernel({id:instanceIndex,start:uint(level.start),...shared}).compute(level.count).setName('Caustics: refit BVH'));
     const args={...shared,rays:this.raysNode,flags:this.flagsNode,geometry:this.surfaceField.geometryNode,instances:this.surfaceField.instancesNode,
       nodeCount:uint(this.hierarchy.nodeCount),receiverCount:this.surfaceField.countNode,source:this.sourceNode,right:this.rightNode,up:this.upNode,
-      incoming:this.lightDirectionNode,spread:this.spreadNode,sigma:this.absorptionNode,reach:this.reachNode};
+      incoming:this.lightDirectionNode,sigma:this.absorptionNode,reach:this.reachNode};
     this.traces=[0,1,2].map(phase=>traceKernel({id:instanceIndex,phase:uint(phase),...args}).compute(RAY_COUNT).setName(`Caustics: trace ${phase}`));
     this.refine=refineKernel({id:instanceIndex,rays:this.raysNode,flags:this.flagsNode,pixel:this.pixelNode}).compute(CELL_COUNT).setName('Caustics: classify optical curvature');
   }
@@ -76,7 +76,9 @@ export class RefractiveLightField {
   registerReceiver(mesh){this.registry.register(mesh);this.dirty=true;}
   setAbsorption(sigma){this.absorptionNode.value.set(...sigma);this.dirty=true;}
   setLightDirection(direction){this.lightDirection.copy(direction).normalize();this.dirty=true;}
-  setSourceSpread(spread){this.spreadNode.value.copy(spread??this.zeroSpread);this.dirty=true;}
+  // Keep lighting/receiver API compatibility. The focused caustic uses the
+  // original directional source; the room's broad spread must not blur its folds.
+  setSourceSpread(spread){this.spreadNode.value.copy(spread??this.zeroSpread);}
 
   /** A normalized receiver irradiance node; public receiver opt-in remains independent of transport. */
   sampleIrradiance() {
@@ -123,15 +125,16 @@ export class RefractiveLightField {
       this.rightNode.value.crossVectors(D,this.scratchAxis).normalize();
       this.upNode.value.crossVectors(this.rightNode.value,D).normalize();
       const r=this.rightNode.value,u=this.upNode.value;
-      // Tight source bounds independent of the receiving footprint. Enclose all four angular views.
+      // Tight directional aperture: no empty margin for additional angular views.
       let width=0,height=0;
       for(let i=0;i<8;i++){
         const p=this.scratchCorner.set(i&1?box.max.x:box.min.x,i&2?box.max.y:box.min.y,i&4?box.max.z:box.min.z).sub(c);
         width=Math.max(width,Math.abs(p.dot(r)));height=Math.max(height,Math.abs(p.dot(u)));
       }
-      const angular=this.spreadNode.value.length(),margin=size.length()*angular+.001;
+      const margin=.001;
       this.sourceNode.value.set((width+margin)*2,(height+margin)*2,0,0);
-      this.beams.sourceAreaNode.value=this.sourceNode.value.x*this.sourceNode.value.y/(2*FINE_GRID*FINE_GRID*4*Math.abs(D.y));
+      // All incident power belongs to this single connected beam field.
+      this.beams.sourceAreaNode.value=this.sourceNode.value.x*this.sourceNode.value.y/(2*FINE_GRID*FINE_GRID*Math.abs(D.y));
       this.pixelNode.value=this.span/CAUSTIC_SIZE;
       if(changed){
         const packed=this.cageNode.value.array,x=body.x,f=body.nodalF;

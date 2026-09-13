@@ -4,18 +4,16 @@ import { wgsl, wgslFn } from 'three/tsl';
 export const BASE_GRID=32;
 export const FINE_GRID=BASE_GRID*2;
 export const RAY_STRIDE=FINE_GRID+1;
-export const SOURCE_SAMPLES=4;
-export const RAYS_PER_SOURCE=RAY_STRIDE*RAY_STRIDE;
-export const RAY_COUNT=RAYS_PER_SOURCE*SOURCE_SAMPLES;
+// One directional field, as in the original geometry-traced CPU caustics.
+export const RAY_COUNT=RAY_STRIDE*RAY_STRIDE;
 export const RAY_RECORDS=5;
-export const CELL_COUNT=BASE_GRID*BASE_GRID*SOURCE_SAMPLES;
+export const CELL_COUNT=BASE_GRID*BASE_GRID;
 export const BEAM_COUNT=CELL_COUNT*8;
 export const CAUSTIC_SIZE=384;
 
 const common=wgsl(`
 const J_GRID: u32 = ${FINE_GRID}u;
 const J_STRIDE: u32 = ${RAY_STRIDE}u;
-const J_RAYS: u32 = ${RAYS_PER_SOURCE}u;
 const J_BASE: u32 = ${BASE_GRID}u;
 const J_EPS: f32 = 0.000002;
 fn j_box(o:vec3f,d:vec3f,lo:vec3f,hi:vec3f,limit:f32)->bool {
@@ -110,25 +108,22 @@ export const refitKernel=wgslFn(`fn jelly_refit(id:u32,start:u32,vertices:ptr<st
   (*bounds)[node*2u]=vec4f(lo,0.0);(*bounds)[node*2u+1u]=vec4f(hi,0.0);return 0u;
 }`);
 
-export const traceKernel=wgslFn(`fn jelly_trace(id:u32,phase:u32,vertices:ptr<storage,array<vec4f>,read_write>,tree:ptr<storage,array<vec4u>,read>,bounds:ptr<storage,array<vec4f>,read_write>,rays:ptr<storage,array<vec4f>,read_write>,flags:ptr<storage,array<u32>,read_write>,geometry:ptr<storage,array<vec4f>,read>,instances:ptr<storage,array<vec4f>,read>,nodeCount:u32,receiverCount:u32,source:vec4f,right:vec3f,up:vec3f,incoming:vec3f,spread:vec3f,sigma:vec3f,reach:f32)->u32 {
-  let sample=id/J_RAYS;let point=id%J_RAYS;let x=point%J_STRIDE;let y=point/J_STRIDE;
+export const traceKernel=wgslFn(`fn jelly_trace(id:u32,phase:u32,vertices:ptr<storage,array<vec4f>,read_write>,tree:ptr<storage,array<vec4u>,read>,bounds:ptr<storage,array<vec4f>,read_write>,rays:ptr<storage,array<vec4f>,read_write>,flags:ptr<storage,array<u32>,read_write>,geometry:ptr<storage,array<vec4f>,read>,instances:ptr<storage,array<vec4f>,read>,nodeCount:u32,receiverCount:u32,source:vec4f,right:vec3f,up:vec3f,incoming:vec3f,sigma:vec3f,reach:f32)->u32 {
+  let x=id%J_STRIDE;let y=id/J_STRIDE;
   let oddX=(x&1u)!=0u;let oddY=(y&1u)!=0u;
   if(phase==0u && (oddX || oddY)){return 0u;}
   if(phase==1u && !(oddX && oddY)){return 0u;}
   if(phase==2u){
     if(oddX==oddY){return 0u;}
-    let cx=min(x/2u,J_BASE-1u);let cy=min(y/2u,J_BASE-1u);let offset=sample*J_BASE*J_BASE;
-    var needed=(*flags)[offset+cy*J_BASE+cx]>0u;
-    if(oddX && y>0u){needed=needed || (*flags)[offset+(y/2u-1u)*J_BASE+cx]>0u;}
-    if(oddY && x>0u){needed=needed || (*flags)[offset+cy*J_BASE+x/2u-1u]>0u;}
+    let cx=min(x/2u,J_BASE-1u);let cy=min(y/2u,J_BASE-1u);
+    var needed=(*flags)[cy*J_BASE+cx]>0u;
+    if(oddX && y>0u){needed=needed || (*flags)[(y/2u-1u)*J_BASE+cx]>0u;}
+    if(oddY && x>0u){needed=needed || (*flags)[cy*J_BASE+x/2u-1u]>0u;}
     if(!needed){for(var k=0u;k<5u;k++){(*rays)[id*5u+k]=vec4f(0.0);}return 0u;}
   }
   let out=id*5u;for(var k=0u;k<5u;k++){(*rays)[out+k]=vec4f(0.0);}
-  let signs=vec2f(select(-1.0,1.0,(sample&1u)!=0u),select(-1.0,1.0,(sample&2u)!=0u));
-  let angular=vec2f(spread.x*signs.x,spread.y*signs.x+spread.z*signs.y);
-  let d=normalize(incoming+right*angular.x+up*angular.y);
-  let r=normalize(right-d*dot(right,d));let u=normalize(cross(r,d));
-  let o=r*((f32(x)/f32(J_GRID)-0.5)*source.x+source.z)+u*((f32(y)/f32(J_GRID)-0.5)*source.y+source.w)-d*reach;
+  let d=incoming;
+  let o=right*((f32(x)/f32(J_GRID)-0.5)*source.x+source.z)+up*((f32(y)/f32(J_GRID)-0.5)*source.y+source.w)-d*reach;
   let entry=j_hit(o,d,reach*3.0,vertices,tree,bounds,nodeCount);if(entry.y<0.0){return 0u;}
   let en=j_normal(entry,d,vertices,tree);let refracted=j_refract(d,en,1.0,1.35);
   if(refracted.w<=0.0){return 0u;}
@@ -162,15 +157,17 @@ export const traceKernel=wgslFn(`fn jelly_trace(id:u32,phase:u32,vertices:ptr<st
 }`,[common]);
 
 export const refineKernel=wgslFn(`fn jelly_refine(id:u32,rays:ptr<storage,array<vec4f>,read_write>,flags:ptr<storage,array<u32>,read_write>,pixel:f32)->u32 {
-  let sample=id/(J_BASE*J_BASE);let cell=id%(J_BASE*J_BASE);let x=cell%J_BASE;let y=cell/J_BASE;
-  let a=sample*J_RAYS+y*2u*J_STRIDE+x*2u;let center=a+J_STRIDE+1u;
+  let x=id%J_BASE;let y=id/J_BASE;
+  var refine=false;var anyValid=false;
+  let threshold=pixel*select(0.6,0.35,(*flags)[id]>0u);
+  let a=y*2u*J_STRIDE+x*2u;let center=a+J_STRIDE+1u;
   let ids=array<u32,4>(a,a+2u,a+J_STRIDE*2u,a+J_STRIDE*2u+2u);
-  let c=(*rays)[center*5u];let cr=(*rays)[center*5u+1u];var mean=vec3f(0.0);var refine=false;var anyValid=c.w>0.0;
+  let c=(*rays)[center*5u];let cr=(*rays)[center*5u+1u];var mean=vec3f(0.0);anyValid=anyValid || c.w>0.0;
   for(var i=0u;i<4u;i++){let p=(*rays)[ids[i]*5u];let t=(*rays)[ids[i]*5u+1u];mean+=p.xyz*0.25;anyValid=anyValid || p.w>0.0;
     refine=refine || p.w!=c.w || t.w!=cr.w || distance(t.xyz,cr.xyz)>0.12;
   }
-  let threshold=pixel*select(0.6,0.35,(*flags)[id]>0u);
-  refine=anyValid && (refine || distance(mean,c.xyz)>threshold);
+  refine=refine || distance(mean,c.xyz)>threshold;
+  refine=anyValid && refine;
   (*flags)[id]=select(0u,1u,refine);return 0u;
 }`,[common]);
 

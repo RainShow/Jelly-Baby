@@ -45,10 +45,19 @@ are relative to the body's center to preserve precision across worlds.
 A static depth-first triangle BVH is refitted bottom-up in ordered GPU dispatches.
 Escape links permit stackless traversal with no fixed-size traversal stack.
 
-Four deterministic angular quadrature directions use the measured HDR window's
-second angular moment. Their weights sum to one; a zero-spread source reduces
-to the directional case without changing flux. Sampling bounds tightly enclose
-the jelly independently of the receiving footprint.
+Caustics use one directional incident field aligned with the measured dominant
+light, matching the source model of the original CPU transport before `df52c92`.
+All incident power belongs to that field. The distinctive bright rims and folds
+come from geometric convergence of connected refracted beams, not from a painted
+pattern or a fitted light blob. Sampling bounds tightly enclose the jelly with
+a 1 mm guard margin independently of the receiving footprint.
+
+The broad room/window angular covariance is deliberately excluded from this focused
+transport. Four separated source directions duplicate the entire pattern; spreading
+beam power over broad Gaussian footprints removes its sharp optical structure.
+The directional approximation preserves the established appearance while avoiding
+both artifacts. `setSourceSpread` and its stored metadata remain compatible with
+existing lighting and additional-source setup, but do not affect the caustic field.
 
 The transport traces actual triangles for entry, exit, total internal reflection,
 and re-entry, using exact unpolarized Fresnel transmission and Beer–Lambert RGB
@@ -58,7 +67,7 @@ work; paths still trapped at that limit contribute no light. Outgoing rays stop
 at the first registered opaque receiver, including raised surfaces. Receiver
 interception before re-entry takes precedence over the next jelly boundary.
 
-A 32×32 base grid per angular sample is refined locally to 64×64. Cell-center
+A 32×32 base grid is refined locally to 64×64. Cell-center
 rays measure nonlinear landing displacement, transmission changes, visibility
 changes, and optical branch changes. Hysteresis stabilizes refinement decisions;
 required edge rays are traced in the same frame. Parent and child bundles are
@@ -67,11 +76,17 @@ incompatible path/surface branches never form a bridge.
 
 [`caustic-beams.js`](../src/graphics/optics/caustic-beams.js) rasterizes connected
 beam triangles through expanded bounding quads. Fragment-local polygon clipping
-integrates triangle/pixel overlap, preserving thin subpixel footprints. Density
-comes from transported power divided by actual receiving area, with additive
-RGBA16F accumulation. Collapsed footprints deposit their power in a containing
-pixel using measured receiver pixel area. There is no arbitrary 18× focus cap.
-The half-float storage ceiling remains 60,000.
+integrates exact triangle/pixel overlap, following the original CPU beam rasterizer.
+Density comes from transported power divided by actual receiving area, with additive
+RGBA16F accumulation. Optical folds may reverse winding and overlap; those overlapping
+triangles remain separate contributions, preserving their sharp focusing structure.
+Collapsed footprints deposit their power in a containing pixel using measured receiver
+pixel area. There is no arbitrary focus cap. The half-float storage ceiling remains
+60,000. Antialiasing is limited to pixel coverage and the mild reconstruction below.
+
+There is one 65×65 ray buffer and one set of deposited beams. No angular differential
+buffers, footprint-preparation dispatch or broad splat overdraw are needed. Atlas
+resolution and the receiver interface are unchanged.
 
 Three 384² targets form a cropped camera atlas: RGBA32F receiver position/identity
 with depth, raw RGBA16F irradiance, and reconstructed RGBA16F irradiance exposed
@@ -235,8 +250,11 @@ CPU caustic photons.
 
 ## Approximation budget and verification
 
-Transport uses the optical proxy, four angular quadrature nodes, bounded adaptive
-sampling, and eight boundary events. RGB shares a geometric path; absorption is
+Transport uses the optical proxy, a dominant-direction light approximation,
+bounded adaptive sampling, and eight boundary events. It does not integrate the
+full extended window. A deformed or lobed jelly can still generate multiple physical
+folds within its caustic; a single source does not imply a featureless spot.
+RGB shares a geometric path; absorption is
 channel-specific, but spectral dispersion and partially reflected Fresnel
 branches are not traced. The receiver atlas samples the camera-visible surface
 at finite resolution; hidden layers are not represented in that atlas. There is
@@ -252,6 +270,11 @@ caustic patterns.
 With `JELLY_WEBGPU_MODULE` pointing to the native `webgpu/index.js` runtime it
 also executes the production TSL compute and render paths on Metal, checks
 deformation and entry intersections against CPU geometry, verifies nonzero beam
-deposition, compiles receiver materials, and checks raised/hidden receiver
-interception. GPU readback is confined to that audit. Live visual assessment and
+deposition with normal studio lighting setup, compiles receiver materials, and
+checks raised/hidden receiver interception. `verify-caustic-reference.mjs` compares
+sampled GPU landing positions and transmitted power with the original CPU optical
+equations, then compares the actual jelly's beam field texel by texel with the
+original conservative CPU beam integrator on a planar atlas. This guards focused
+shape and flux rather than merely checking for a nonzero or single-peaked output.
+GPU readback is confined to that audit. Live visual assessment and
 whole-game frame timing remain separate from these numerical checks.
