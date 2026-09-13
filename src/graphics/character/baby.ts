@@ -29,6 +29,10 @@ export class Baby {
     this.face=new BabyFace(body,this.group);
     this.update();
   }
+  setReflectionMap(texture:THREE.Texture|null,intensity:number) {
+    if(this.jellyMaterial.envMap!==texture){this.jellyMaterial.envMap=texture;this.jellyMaterial.needsUpdate=true;}
+    this.jellyMaterial.envMapIntensity=intensity;
+  }
   setFlavor(flavor:JellyFlavorName) {
     const look=JELLY_FLAVORS[flavor],distance=this.jellyMaterial.attenuationDistance;
     this.jellyMaterial.color.set(look.surface);

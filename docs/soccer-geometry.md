@@ -41,8 +41,9 @@ The pitch is a material-mapped turf slab using the authored `grass_texture`
 base, normal, roughness, and displacement maps. The maps use a `.16 m`
 metre-based tile, so the 2 × 3.08 m pitch receives 12.5 × 19.25 square repeats
 without stretching the grass. The roughness texture is consumed directly as
-PBR roughness and the turf has no clearcoat; it must read as diffuse artificial
-grass rather than toy enamel. The displacement map supplies a restrained
+linear PBR roughness and the turf has no clearcoat. Its coherent dielectric
+specular intensity is `0.16` so the unresolved fibre field reads as diffuse
+artificial grass rather than a smooth plastic sheet. The displacement map supplies a restrained
 vertex-height offset and fine bump detail; no procedural sprout mesh is needed.
 Paint belongs to the same turf material as the base texture rather than
 coplanar decals, and the slab receives shared shadows and jelly caustics.

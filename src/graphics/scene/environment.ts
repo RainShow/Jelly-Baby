@@ -16,7 +16,7 @@ export async function loadEnvironment(renderer:THREE.WebGPURenderer,scene:THREE.
   const target=pmrem.fromEquirectangular(source);
   const apply=()=>{scene.environment=target.texture;scene.environmentIntensity=intensity;};
   if(!night)apply();
-  return {...lighting,apply,dispose:()=>{target.dispose();source.dispose();pmrem.dispose();}};
+  return {...lighting,intensity,reflectionTexture:source,apply,dispose:()=>{target.dispose();source.dispose();pmrem.dispose();}};
 }
 
 export function measureWindow(image:{data:Uint16Array;width:number;height:number},upperPeakOnly=false) {

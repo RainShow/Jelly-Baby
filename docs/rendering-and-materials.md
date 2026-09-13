@@ -156,7 +156,16 @@ receiver atlas checks object identity and position during reconstruction.
 
 [`src/graphics/character/baby.ts`](../src/graphics/character/baby.ts) uses a
 `MeshPhysicalNodeMaterial` with full transmission, IOR `1.35`, small dispersion,
-clearcoat, and attenuation. Its `thicknessNode` reads the dynamic
+clearcoat, and attenuation. The player body uses a 128² local cube reflection
+probe from [`local-reflections.ts`](../src/graphics/scene/local-reflections.ts).
+Open probe directions retain the current authored HDR environment, while actual
+visible scene geometry replaces it where walls, furniture, stadium structure, or
+other opaque scenery blocks the distant environment. The probe is fully captured
+under the loading card on startup/world travel, then refreshed during movement one
+cube face every 65 ms after the player has moved 2.5 cm. This keeps local
+reflection occlusion/parallax without adding six scene renders to a gameplay frame.
+The player itself is hidden from the probe to avoid recursive self-reflection.
+Its `thicknessNode` reads the dynamic
 `opticalThickness` vertex attribute, which is filled asynchronously by the
 optical transport path. The flavor picker updates the surface color and
 attenuation color together; the attenuation color is derived from the selected

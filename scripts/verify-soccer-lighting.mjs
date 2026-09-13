@@ -12,6 +12,7 @@ shadows.update(renderer);const reference=shadows.spanNode.value.clone(),width=sh
 const stadium=new SoccerStadium();stadium.group.visible=false;shadows.add(stadium.group,SOCCER_ENVELOPE);home.visible=false;stadium.group.visible=true;shadows.update(renderer);
 const turfMaterial=stadium.turf.material;
 assert.equal(turfMaterial.clearcoat,0,'artificial turf has no enamel clearcoat');
+assert.equal(turfMaterial.specularIntensity,.16,'macro turf suppresses the smooth dielectric window lobe');
 assert(turfMaterial.roughnessNode,'artificial turf keeps the authored roughness texture in the PBR graph');
 const densityX=shadows.target.width/shadows.spanNode.value.x,densityY=shadows.target.height/shadows.spanNode.value.y;
 assert(densityX>=width/reference.x&&densityX<width/reference.x+1);assert(densityY>=height/reference.y&&densityY<height/reference.y+1);

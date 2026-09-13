@@ -53,7 +53,7 @@ export function disposeGrassTextures(textures:GrassTextureSet) {
 }
 
 export function turfMaterial(grass:GrassTextureSet) {
-  const material=new THREE.MeshPhysicalNodeMaterial({color:0x43883d,metalness:0,roughness:.85,clearcoat:0}),p=positionLocal;
+  const material=new THREE.MeshPhysicalNodeMaterial({color:0x43883d,metalness:0,roughness:.85,clearcoat:0,specularIntensity:.16}),p=positionLocal;
   // The tile size is expressed in metres: the 2 x 3.08 m pitch receives
   // 12.5 x 19.25 square repeats without stretching the authored grass.
   const uv=p.xz.div(GRASS_TILE_METERS);
@@ -71,9 +71,10 @@ export function turfMaterial(grass:GrassTextureSet) {
   const paint=float(edge.greaterThan(0).or(center.lessThan(.0035)).or(halfway.lessThan(.0035)).or(penalty));
   const green=base.mul(float(1).add(stripe));
   material.colorNode=mix(green,vec3(.86,.88,.68),paint);
-  // The asset is an authored PBR roughness map (white = rough). Use it as-is;
-  // the old enamel remap compressed it into a glossy mid-roughness range and
-  // added clearcoat, which is inappropriate for artificial grass.
+  // The asset is an authored PBR roughness map (white = rough). Use it as-is.
+  // At this metre-scale the unresolved grass fibres scatter most coherent
+  // environment reflection, so keep the default dielectric lobe restrained
+  // rather than letting the bright studio window wash across the whole pitch.
   material.roughnessNode=sourceRoughness;
   // NodeMaterial position displacement makes the height map affect the
   // actual turf silhouette; keep bevels and the underside fixed to the slab.

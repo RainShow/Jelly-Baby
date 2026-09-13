@@ -42,7 +42,10 @@ The pitch uses the authored four-map grass package in
 [`src/assets/grass_texture`](../src/assets/grass_texture/). Its base, normal,
 roughness, and displacement maps repeat at a `.16 m` tile size, giving the
 2 × 3.08 m field a consistent square texture scale. The roughness map is used as
-an actual PBR roughness map without the toy-enamel clearcoat/remap, so the turf
+an actual linear PBR roughness map without the toy-enamel clearcoat/remap. The
+macro material also restrains coherent dielectric specular to `0.16`; unresolved
+grass fibres should scatter the bright studio window instead of producing a
+large smooth reflection across the pitch. The turf
 stays diffuse rather than producing a coated reflective sheen. The existing pitch
 lines remain an overlay in the same turf material, so they do not z-fight with the
 textured slab.

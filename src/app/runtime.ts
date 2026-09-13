@@ -26,6 +26,7 @@ import { CarriedWearableFacility, WearableFacility } from '../worlds/main/facili
 import { warmMainScenePipelines } from '../graphics/scene/render-warmup.ts';
 import { WorldTravel } from '../worlds/travel.ts';
 import { SOCCER_RUN_CADENCE_SCALE, SOCCER_RUN_SPEED_SCALE } from '../worlds/soccer/layout.ts';
+import { LocalReflectionProbe } from '../graphics/scene/local-reflections.ts';
 
 export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   stage('Starting WebGPU');
@@ -45,6 +46,8 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   stage('Making a little jelly');
   const body=new SoftBody(cage);
   const baby=new Baby(body);scene.add(baby.group);
+  const localReflections=new LocalReflectionProbe(scene,baby.group,environment.reflectionTexture);
+  baby.setReflectionMap(localReflections.texture,environment.intensity);
   const optics=new RefractiveLightField(body.cage.opticalSurface,environment.incoming,ABSORPTION);
   optics.setCamera(camera);
   const caustics=new CausticReceivers(optics,environment);
@@ -101,11 +104,13 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
     }
     if(worlds.soccer)worlds.soccer.physics.onEvent=(kind,strength,p)=>sound.soccerEvent(kind,strength,p);
     baby.update();optics.update(renderer,body,true);transport.follow();await transport.update();
+    localReflections.captureNow(renderer,body.center);
   };
   const transport=new OpticalTransport(optics,body,camera,environment.incoming,fail);
   const lightingMode=new LightingMode(renderer,scene,environment,light=>{
     optics.setLightDirection(light.incoming);transport.setLightDirection(light.incoming);
     facilityShadows.setLighting(light.incoming,light.windowFraction);caustics.setLighting(light);table.setLighting(light);
+    localReflections.setEnvironment(light.reflectionTexture);baby.setReflectionMap(localReflections.texture,light.intensity);
   },fail);
   const resize=()=>resizeView(renderer,camera,input.controls);
   let resizeFrame=0;
@@ -133,6 +138,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   facilityShadows.surfaces.update(renderer,shadowSyncRevision);
   optics.update(renderer,body,true);
   await transport.update();
+  localReflections.captureNow(renderer,body.center);
   stage('Compiling the material');
   await warmMainScenePipelines(renderer,scene,camera);
   stage('Drawing the first frame');
@@ -176,6 +182,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
       transport.follow();
       optics.update(renderer,body);
       table.mesh.position.x=body.center.x;table.mesh.position.z=body.center.z;
+      localReflections.update(renderer,body.center,time);
       void transport.update().catch(fail);
       composite.render();
     }catch(error){fail(error);}
@@ -184,9 +191,9 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   const dispose=()=>{
     if(disposed)return;disposed=true;
     lightingMode.dispose();void renderer.setAnimationLoop(null);input.dispose();sound.dispose();transport.dispose();resizeObserver.disconnect();cancelAnimationFrame(resizeFrame);
-    worlds.dispose();facilities.dispose();facilityShadows.dispose();caustics.dispose();flavorPicker.dispose();composite.dispose();baby.dispose();table.dispose();environment.dispose();optics.dispose();renderer.dispose();
+    worlds.dispose();facilities.dispose();facilityShadows.dispose();caustics.dispose();flavorPicker.dispose();composite.dispose();localReflections.dispose();baby.dispose();table.dispose();environment.dispose();optics.dispose();renderer.dispose();
   };
   window.addEventListener('pagehide',event=>{if(!event.persisted)dispose();});
   if(import.meta.hot)import.meta.hot.dispose(dispose);
-  return {stop:()=>{disposed=true;worlds.dispose();lightingMode.dispose();input.clear();facilities.dispose();facilityShadows.dispose();caustics.dispose();flavorPicker.dispose();sound.dispose();transport.dispose();void renderer.setAnimationLoop(null);}};
+  return {stop:()=>{disposed=true;worlds.dispose();lightingMode.dispose();input.clear();facilities.dispose();facilityShadows.dispose();caustics.dispose();flavorPicker.dispose();sound.dispose();transport.dispose();localReflections.dispose();void renderer.setAnimationLoop(null);}};
 }
