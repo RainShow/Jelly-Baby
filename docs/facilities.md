@@ -233,7 +233,7 @@ is no camera-following shadow shimmer.
 
 `FacilityShadows.add` also registers every descendant mesh with
 [`SurfaceShadows`](../src/facilities/surface-shadows.ts) and marks it
-`receiveCaustics = true` for the shared caustic receiver layer. Two 2048² single-channel depth maps
+`receiveCaustics = true` for the shared caustic receiver layer. Two 2048² single-channel depth maps on desktop, or 1536² maps on the isolated mobile path,
 provide jelly-to-facility, facility self-shadowing, and facility-to-jelly
 occlusion. They share the measured window direction and fixed facility motion
 bounds with a 12 mm lateral margin and a 25 cm margin along the light depth

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { Box3, BoxGeometry, Group, Mesh, MeshPhysicalNodeMaterial, Vector3, WebGPUCoordinateSystem } from 'three/webgpu';
+import { Box3, BoxGeometry, Group, Mesh, MeshPhysicalNodeMaterial, RGFormat, Vector3, WebGPUCoordinateSystem } from 'three/webgpu';
 import { SurfaceShadows, SURFACE_SHADOW_SIZE, SURFACE_SHADOW_BIAS } from '../src/facilities/surface-shadows.ts';
 import { FacilityShadows, FACILITY_SHADOW_SIZE } from '../src/facilities/shadows.ts';
 import { Swing } from '../src/worlds/main/facilities/swing/graphics.ts';
@@ -57,6 +57,7 @@ const originalTarget={},renderer={
 shadows.update(renderer);assert.equal(renders,1);
 assert.equal(shadows.target.width,FACILITY_SHADOW_SIZE);
 assert.equal(shadows.target.height,FACILITY_SHADOW_SIZE);
+assert.equal(shadows.target.texture.format,RGFormat,'facility shadow/contact uses only its sampled red and green channels');
 shadows.update(renderer);assert.equal(renders,1,'idle shadow reuses its exact mask');
 const origin=shadows.originNode.value.clone(),span=shadows.spanNode.value.clone();
 for(const angle of [-SWING.maxAngle,-.4,0,.000001,.4,SWING.maxAngle]) {

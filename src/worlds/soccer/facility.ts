@@ -25,7 +25,7 @@ export class SoccerFacility implements Facility {
   private readonly moving=new Group();
   private scoreValue=-1;
   private readonly lighting:SoccerLighting|undefined;
-  constructor(scene:Scene,body:SoftBody,shadows:FacilityShadows,grass?:GrassTextureSet,opticalContext?:{camera:PerspectiveCamera;fail:(error:Error)=>void}) {
+  constructor(scene:Scene,body:SoftBody,shadows:FacilityShadows,grass?:GrassTextureSet,opticalContext?:{camera:PerspectiveCamera;fail:(error:Error)=>void;cameraOnlyOpticalHz?:number}) {
     this.stadium=new SoccerStadium(false,grass);
     this.physics=new SoccerPhysics(body);this.goalie=new Baby(this.physics.goalie.body);this.goalie.setFlavor('blueberry');
     // FaceSkin binds in the original local rest frame, then follows the placed cage.
@@ -43,7 +43,7 @@ export class SoccerFacility implements Facility {
     this.ball.receiveCaustics=true;
     if(shadows.caustics&&opticalContext){
       this.goalie.mesh.userData.opticalShadowCaster=true;
-      this.lighting=new SoccerLighting(this.stadium.turf,this.physics.goalie.body,shadows,shadows.caustics,opticalContext.camera,opticalContext.fail);
+      this.lighting=new SoccerLighting(this.stadium.turf,this.physics.goalie.body,shadows,shadows.caustics,opticalContext.camera,opticalContext.fail,opticalContext.cameraOnlyOpticalHz);
     }
     shadows.add(this.stadium.group,SOCCER_ENVELOPE);shadows.add(this.moving,SOCCER_ENVELOPE);
     this.update();

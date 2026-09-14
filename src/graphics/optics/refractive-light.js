@@ -138,7 +138,7 @@ class OpticalShadowField {
     this.shadow=new Float32Array(this.size*this.size);
     this.contact=new Float32Array(this.size*this.size);
     this.blurScratch=new Float32Array(this.size*this.size);
-    this.shadowBytes=new Uint8Array(this.size*this.size*4);
+    this.shadowBytes=new Uint8Array(this.size*this.size*2);
     this.triangleA=[0,0];this.triangleB=[0,0];this.triangleC=[0,0];
   }
   rasterTriangle(a,b,c,buffer,value) {
@@ -186,9 +186,8 @@ class OpticalShadowField {
     }
     this.blur(this.shadow);this.blur(this.contact);
     for(let i=0;i<this.size*this.size;i++) {
-      this.shadowBytes[i*4]=Math.round(this.shadow[i]*255);
-      this.shadowBytes[i*4+1]=Math.round(this.contact[i]*255);
-      this.shadowBytes[i*4+2]=0;this.shadowBytes[i*4+3]=255;
+      this.shadowBytes[i*2]=Math.round(this.shadow[i]*255);
+      this.shadowBytes[i*2+1]=Math.round(this.contact[i]*255);
     }
   }
 }

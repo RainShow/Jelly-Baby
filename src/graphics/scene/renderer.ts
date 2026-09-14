@@ -36,11 +36,15 @@ export async function createRenderer(fail:(e:unknown)=>void) {
   return renderer;
 }
 
-export function resizeView(renderer:THREE.WebGPURenderer,camera:THREE.PerspectiveCamera,controls:OrbitControls) {
+export function drawingBufferDpr(width:number,height:number,devicePixelRatio:number,maxDpr=1.7) {
+  const dpr=Math.min(devicePixelRatio,maxDpr,Math.sqrt(4_000_000/(width*height)));
+  return Number.isFinite(dpr)&&dpr>0?dpr:1;
+}
+
+export function resizeView(renderer:THREE.WebGPURenderer,camera:THREE.PerspectiveCamera,controls:OrbitControls,maxDpr=1.7) {
   if(window.innerWidth<=0||window.innerHeight<=0)return;
   const width=Math.max(1,window.innerWidth),height=Math.max(1,window.innerHeight);
-  const dpr=Math.min(window.devicePixelRatio,1.7,Math.sqrt(4_000_000/(width*height)));
-  renderer.setDrawingBufferSize(width,height,Number.isFinite(dpr)&&dpr>0?dpr:1);
+  renderer.setDrawingBufferSize(width,height,drawingBufferDpr(width,height,window.devicePixelRatio,maxDpr));
   camera.aspect=width/height;
   camera.fov=2*Math.atan(Math.tan(18*Math.PI/180)*Math.max(1,.85/camera.aspect))*180/Math.PI;
   // Every visible ray meets the tabletop. The horizon never enters the frame.

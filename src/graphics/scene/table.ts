@@ -6,11 +6,16 @@ import type { FacilityShadows } from '../../facilities/shadows.ts';
 
 export type TableTextures={base:THREE.Texture;normal:THREE.Texture;roughness:THREE.Texture};
 
-export async function loadTableTextures():Promise<TableTextures> {
-  const loader=new THREE.TextureLoader();
-  const urls=[new URL('../../assets/wood_texture/wood_base.jpg',import.meta.url).href,
-    new URL('../../assets/wood_texture/wood_normal.png',import.meta.url).href,
+export function tableTextureURLs(mobile=false) {
+  const desktopBase=new URL('../../assets/wood_texture/wood_base.jpg',import.meta.url).href;
+  const mobileBase=new URL('../../assets/wood_texture/wood_base_4k.jpg',import.meta.url).href;
+  return [mobile?mobileBase:desktopBase,new URL('../../assets/wood_texture/wood_normal.png',import.meta.url).href,
     new URL('../../assets/wood_texture/wood_roughness.jpg',import.meta.url).href];
+}
+
+export async function loadTableTextures(mobile=false):Promise<TableTextures> {
+  const loader=new THREE.TextureLoader();
+  const urls=tableTextureURLs(mobile);
   const [base,normal,roughness]=await Promise.all(urls.map(url=>loader.loadAsync(url)));
   base.colorSpace=THREE.SRGBColorSpace;
   for(const t of [base,normal,roughness]) {t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=8;}

@@ -27,8 +27,10 @@ import { warmMainScenePipelines } from '../graphics/scene/render-warmup.ts';
 import { WorldTravel } from '../worlds/travel.ts';
 import { SOCCER_RUN_CADENCE_SCALE, SOCCER_RUN_SPEED_SCALE } from '../worlds/soccer/layout.ts';
 import { LocalReflectionProbe } from '../graphics/scene/local-reflections.ts';
+import { startupPlatformProfile } from './platform-profile.ts';
 
 export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
+  const profile=startupPlatformProfile();
   stage('Starting WebGPU');
   const renderer=await createRenderer(fail);
   document.querySelector('#viewport')!.appendChild(renderer.domElement);
@@ -41,7 +43,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   camera.position.set(.111,.170,.256);
   stage('Loading the little room');
   const [environment,nightEnvironment,cage,tableTextures]=await Promise.all([
-    loadEnvironment(renderer,scene),loadEnvironment(renderer,scene,true),loadBabyCage(),loadTableTextures(),
+    loadEnvironment(renderer,scene),loadEnvironment(renderer,scene,true),loadBabyCage(),loadTableTextures(profile.mobile),
   ]);
   // Start the large table uploads before CPU-side world construction so the
   // backend can overlap transfer work with geometry/physics setup.
@@ -49,21 +51,21 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
   stage('Making a little jelly');
   const body=new SoftBody(cage);
   const baby=new Baby(body);scene.add(baby.group);
-  const localReflections=new LocalReflectionProbe(scene,baby.group,environment.reflectionTexture);
+  const localReflections=new LocalReflectionProbe(scene,baby.group,environment.reflectionTexture,profile.reflectionFacesPerFrame);
   baby.setReflectionMap(localReflections.texture,environment.intensity);
   const optics=new RefractiveLightField(body.cage.opticalSurface,environment.incoming,ABSORPTION);
   optics.setCamera(camera);
   // Worker BVH construction is independent of the remaining scene setup. Start
   // it here so that cold worker initialization runs in parallel with facilities.
-  const transport=new OpticalTransport(optics,body,camera,environment.incoming,fail);
+  const transport=new OpticalTransport(optics,body,camera,environment.incoming,fail,profile.cameraOnlyOpticalHz);
   const caustics=new CausticReceivers(optics,environment);
-  const facilityShadows=new FacilityShadows(environment.incoming,environment.windowFraction,caustics);
+  const facilityShadows=new FacilityShadows(environment.incoming,environment.windowFraction,caustics,-.00005,profile.surfaceShadowSize);
   facilityShadows.surfaces.addBaby(baby.mesh);
   const table=makeTable(optics,environment,facilityShadows,caustics,tableTextures);scene.add(table.mesh);
-  const composite=createComposite(renderer,scene,camera);
+  const composite=createComposite(renderer,scene,camera,profile.bloomResolutionScale);
   const rig=new Locomotion(body);
   const facilities=new Facilities(body);
-  const worlds=new WorldTravel(scene,body,facilityShadows,facilities,renderer,camera,stage,fail);
+  const worlds=new WorldTravel(scene,body,facilityShadows,facilities,renderer,camera,stage,fail,profile.cameraOnlyOpticalHz);
   const wearableTable=new WearableFacility(worlds.home,body,baby.group,rig,facilityShadows);
   const bed=new BedFacility(worlds.home,body,facilityShadows);
   rig.onJump=()=>{
@@ -128,7 +130,7 @@ export async function startGame(stage:(s:string)=>void,fail:(e:unknown)=>void) {
     if(signal.aborted)return;
     transport.follow();localReflections.captureNow(renderer,body.center);
   },()=>composite.render(),fail);
-  const resize=()=>resizeView(renderer,camera,input.controls);
+  const resize=()=>resizeView(renderer,camera,input.controls,profile.maxDpr);
   let resizeFrame=0;
   const resizeObserver=new ResizeObserver(()=>{
     cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(resize);

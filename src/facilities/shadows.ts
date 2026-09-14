@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { float, positionWorld, uniform, vec3 } from 'three/tsl';
-import { SurfaceShadows } from './surface-shadows.ts';
+import { SurfaceShadows, SURFACE_SHADOW_SIZE } from './surface-shadows.ts';
 import type { CausticReceivers } from '../graphics/optics/caustic-receivers.ts';
 
 export const FACILITY_SHADOW_SIZE=512;
@@ -11,7 +11,7 @@ export const FACILITY_SHADOW_SIZE=512;
 export class FacilityShadows {
   readonly surfaces:SurfaceShadows;
   readonly caustics:CausticReceivers|undefined;
-  readonly target=new THREE.RenderTarget(FACILITY_SHADOW_SIZE,FACILITY_SHADOW_SIZE,{depthBuffer:false,samples:4});
+  readonly target=new THREE.RenderTarget(FACILITY_SHADOW_SIZE,FACILITY_SHADOW_SIZE,{depthBuffer:false,samples:4,format:THREE.RGFormat});
   readonly originNode=uniform(new THREE.Vector2());
   readonly spanNode=uniform(new THREE.Vector2(1,1));
   readonly worldToUVNode=uniform(new THREE.Matrix3());
@@ -31,15 +31,17 @@ export class FacilityShadows {
   private referenceSpan:THREE.Vector2|undefined;
   private readonly receiverFields=new Map<number,FacilityShadows>();
   private readonly receiverHeight:number;
+  private readonly surfaceShadowSize:number;
   private visible(group:THREE.Object3D) {
     for(let object:THREE.Object3D|null=group;object;object=object.parent)if(!object.visible)return false;
     return true;
   }
-  constructor(incoming:THREE.Vector3,windowFraction:number,caustics?:CausticReceivers,receiverHeight=-.00005) {
+  constructor(incoming:THREE.Vector3,windowFraction:number,caustics?:CausticReceivers,receiverHeight=-.00005,surfaceShadowSize=SURFACE_SHADOW_SIZE) {
     this.receiverHeight=receiverHeight;
+    this.surfaceShadowSize=surfaceShadowSize;
     this.caustics=caustics;
     if(incoming.y>=-.01)throw new Error('Facility shadows require a downward light direction');
-    this.surfaces=new SurfaceShadows(incoming,windowFraction);
+    this.surfaces=new SurfaceShadows(incoming,windowFraction,surfaceShadowSize);
     const x=incoming.x/incoming.y,z=incoming.z/incoming.y,floor=receiverHeight;
     // Project onto the tabletop along incoming light, then put world X/Z in
     // shadow-camera X/Y. Fixed bounds avoid camera-following texel shimmer.
@@ -82,7 +84,7 @@ export class FacilityShadows {
   atHeight(height:number,incoming:THREE.Vector3,windowFraction:number) {
     let field=this.receiverFields.get(height);
     if(!field){
-      field=new FacilityShadows(incoming,windowFraction,undefined,height);
+      field=new FacilityShadows(incoming,windowFraction,undefined,height,this.surfaceShadowSize);
       field.referenceSpan=this.referenceSpan?.clone();
       // A wearable may have been reparented from its registered facility root
       // onto the shared baby before this raised field exists. Preserve the

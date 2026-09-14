@@ -177,7 +177,7 @@ When the body surface revision changes, the main thread sends copies of cage
 particles and nodal deformation gradients using transferable buffers. The worker
 deforms and refits the proxy, updates its `OpticalShadowField`, and posts the
 shadow/contact texture first. The main thread installs those bytes into the
-256² RGBA shadow texture, updates its receiver coordinates, and records the
+256² RG shadow texture, updates its receiver coordinates, and records the
 traced center/origin. The worker then performs view-thickness tracing and posts
 a second message.
 
@@ -189,7 +189,10 @@ directional field.
 The worker's directional raster and view-thickness loops reuse triangle/ray/intersection
 scratch storage rather than allocating arrays and hit records per triangle or vertex.
 The arithmetic and resulting shadow/contact bytes and thickness values are unchanged;
-the change only removes worker CPU/GC overhead from startup and later 30 Hz updates.
+the change only removes worker CPU/GC overhead from startup and later updates.
+Shape-changing requests retain the 30 Hz ceiling everywhere. Camera-only
+thickness requests retain 30 Hz on desktop and use a separate 20 Hz gate on the
+startup-locked mobile path.
 
 `follow()` compensates for body translation between the worker's traced center
 and the current center. It shifts the contact origin horizontally and reprojects
@@ -223,7 +226,7 @@ projects every proxy triangle along the measured incoming light direction onto a
 - red: directional body shadow;
 - green: a height-faded contact contribution from low body triangles.
 
-Both channels receive a small separable blur before being packed into RGBA
+Both channels receive a small separable blur before being packed into RG
 bytes. The table samples them with separate coordinate transforms. The field is
 kept independent from the GPU caustic targets so caustic changes cannot alter
 the established opaque shadow/contact behavior.

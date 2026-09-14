@@ -58,7 +58,8 @@ dpr    = min(devicePixelRatio, 1.7, sqrt(4,000,000 / (width × height)))
 The drawing buffer is set once with the resulting DPR. DPR is allowed to fall
 below 1 on a very large CSS viewport; there is no final `max(1, dpr)` floor that
 would break the four-million-pixel cap. Zero-sized transient viewports are
-ignored.
+ignored. The startup-locked coarse-pointer mobile path changes only the DPR
+ceiling to `1.5`; desktop retains the `1.7` ceiling.
 
 The camera starts near the 7 cm character and uses a 36-degree base framing.
 The field of view widens for a narrow aspect ratio, the mobile view is shifted
@@ -125,17 +126,19 @@ reach the existing fatal UI.
 
 [`src/graphics/scene/table.ts`](../src/graphics/scene/table.ts) loads three wood maps:
 
-- `wood_base.jpg` for albedo;
+- `wood_base.jpg` for desktop albedo, or `wood_base_4k.jpg` on mobile;
 - `wood_normal.png` for micro-relief; and
 - `wood_roughness.jpg` for roughness.
 
-All maps repeat and use anisotropy 8. The world-space UV scale repeats the wood
+Mutually exclusive HTML preloads use the same startup-locked platform decision
+as the texture loader, so only the selected base image is requested. All maps
+repeat and use anisotropy 8. The world-space UV scale repeats the wood
 every 2.5 metres. The table is a 200 m plane placed just below the simulation
 floor so its visible surface meets the contact and receiver conventions.
 
 The physical node material combines the wood with:
 
-- optical shadow and near-floor contact from the RGBA shadow texture;
+- optical shadow and near-floor contact from the two-channel RG shadow texture;
 - facility shadow/contact from the separate facility target, 512² at the main
   playroom footprint and resized for larger active-world footprints to preserve
   its world-space texel density;
@@ -169,7 +172,7 @@ visible scene geometry replaces it where walls, furniture, stadium structure, or
 other opaque scenery blocks the distant environment. The probe is fully captured
 under the loading card on startup/world travel. During gameplay it refreshes after
 about 1.5 mm of player translation and renders at most four 128² cube faces per
-frame. Faces are staged into a scratch cube; only a completed six-face capture is
+frame on desktop or two per frame on mobile. Faces are staged into a scratch cube; only a completed six-face capture is
 GPU-copied into the stable cube used by the jelly material and then marked for
 PMREM refresh. This lets the next capture begin in the same frame without exposing
 a partially updated cube. Removing the previous per-face wall-clock throttle keeps
@@ -195,7 +198,7 @@ and then appear a second time through the body.
 
 1. reads the scene output;
 2. adds restrained bloom with threshold `.075`, strength `.18`, and radius
-   `1.6`;
+   `1.6`, using half-resolution targets on desktop and 0.4-scale targets on mobile;
 3. applies a slight cool/bright channel balance;
 4. applies a cheap high-contrast pre-grade around linear 18% middle gray, with
    highlights left in HDR for the renderer's AgX shoulder instead of being

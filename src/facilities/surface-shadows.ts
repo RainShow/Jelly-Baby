@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { Fn, float, normalWorldGeometry, positionWorld, texture, uniform, vec2, vec4 } from 'three/tsl';
 
 export const SURFACE_SHADOW_SIZE=2048;
+export const MOBILE_SURFACE_SHADOW_SIZE=1536;
 export const SURFACE_SHADOW_BIAS=.0002; // metres, independent of the fitted depth range
 const GROUND_SHADOW_SIZE=512;
 type ReceiverDepth={source:THREE.Mesh;proxy:THREE.Mesh;scene:THREE.Scene;target:THREE.RenderTarget;dirty:boolean};
@@ -17,8 +18,9 @@ export class SurfaceShadows {
   private readonly material=new THREE.MeshBasicNodeMaterial({side:THREE.DoubleSide,toneMapped:false});
   private readonly facilities=new THREE.Scene();
   private readonly baby=new THREE.Scene();
-  private readonly facilityTarget=new THREE.RenderTarget(SURFACE_SHADOW_SIZE,SURFACE_SHADOW_SIZE,{type:THREE.FloatType,format:THREE.RedFormat});
-  private readonly babyTarget=new THREE.RenderTarget(SURFACE_SHADOW_SIZE,SURFACE_SHADOW_SIZE,{type:THREE.FloatType,format:THREE.RedFormat});
+  private readonly facilityTarget:THREE.RenderTarget;
+  private readonly babyTarget:THREE.RenderTarget;
+  readonly size:number;
   private readonly bounds=new THREE.Box3();
   private readonly casters:{source:THREE.Mesh;proxy:THREE.Mesh;version:number}[]=[];
   private readonly roots=new Set<THREE.Object3D>();
@@ -34,7 +36,10 @@ export class SurfaceShadows {
     return true;
   }
 
-  constructor(incoming:THREE.Vector3,windowFraction:number) {
+  constructor(incoming:THREE.Vector3,windowFraction:number,size=SURFACE_SHADOW_SIZE) {
+    this.size=size;
+    this.facilityTarget=new THREE.RenderTarget(size,size,{type:THREE.FloatType,format:THREE.RedFormat});
+    this.babyTarget=new THREE.RenderTarget(size,size,{type:THREE.FloatType,format:THREE.RedFormat});
     this.windowFraction.value=windowFraction;
     this.directionNode=uniform(incoming.clone().negate());
     this.camera.coordinateSystem=THREE.WebGPUCoordinateSystem;
@@ -106,6 +111,7 @@ export class SurfaceShadows {
   }
 
   private occlusion(target:THREE.RenderTarget,receiverTarget?:THREE.RenderTarget) {
+    const size=this.size;
     return Fn(()=>{
       const clip=this.matrixNode.mul(vec4(positionWorld,1)).toVar();
       const uv=clip.xy.mul(vec2(.5,-.5)).add(.5).toVar();
@@ -124,13 +130,13 @@ export class SurfaceShadows {
       // still shadow themselves rather than excluding this caster entirely.
       const separation=float(0).toVar();
       if(receiverTarget){
-        const centerBase=uv.mul(SURFACE_SHADOW_SIZE).sub(.5).floor();
+        const centerBase=uv.mul(size).sub(.5).floor();
         const anchor=float(-1).toVar();
         // A nearest texel can belong to the next triangle on a curved ridge.
         // Use the conservative envelope of the four surrounding planes so a
         // triangle-boundary mismatch does not turn into false self separation.
         for(let y=0;y<2;y++)for(let x=0;x<2;x++){
-          const sampleUV=centerBase.add(vec2(x,y)).add(.5).div(SURFACE_SHADOW_SIZE);
+          const sampleUV=centerBase.add(vec2(x,y)).add(.5).div(size);
           const own=texture(receiverTarget.texture,sampleUV).r;
           const predicted=own.add(gradient.dot(uv.sub(sampleUV)));
           anchor.assign(own.lessThan(1).select(anchor.max(predicted),anchor));
@@ -140,12 +146,12 @@ export class SurfaceShadows {
       const mask=float(0).toVar();
       for(let z=-1;z<=1;z++)for(let x=-1;x<=1;x++) {
         const sampleUV=uv.add(this.filterXNode.mul(x)).add(this.filterZNode.mul(z));
-        const texel=sampleUV.mul(SURFACE_SHADOW_SIZE).sub(.5).toVar(),base=texel.floor(),fraction=texel.fract();
+        const texel=sampleUV.mul(size).sub(.5).toVar(),base=texel.floor(),fraction=texel.fract();
         const tentWeight=(x===0?2:1)*(z===0?2:1)/16;
         // Interpolate visibility, never depth. The outer tent has exactly the
         // ground shadow's world-space footprint, independent of map resolution.
         for(let by=0;by<=1;by++)for(let bx=0;bx<=1;bx++) {
-          const tapUV=base.add(vec2(bx,by)).add(.5).div(SURFACE_SHADOW_SIZE);
+          const tapUV=base.add(vec2(bx,by)).add(.5).div(size);
           const depth=texture(target.texture,tapUV).r;
           const planeDepth=clip.z.add(gradient.dot(tapUV.sub(uv)));
           const ownDepth=receiverTarget?texture(receiverTarget.texture,tapUV).r:float(1);

@@ -43,12 +43,14 @@ export class WorldTravel {
   private readonly camera:PerspectiveCamera;
   private readonly stage:(s:string)=>void;
   private readonly fail:(e:unknown)=>void;
+  private readonly cameraOnlyOpticalHz:number;
   private readonly warmedWorlds=new Set<WorldId>(['home']);
   onMove:()=>void=()=>{};
   onMenuOpen:()=>void=()=>{};
   onReady:()=>void|Promise<void>=()=>{};
-  constructor(scene:Scene,body:SoftBody,shadows:FacilityShadows,homeFacilities:Facilities,renderer:WebGPURenderer,camera:PerspectiveCamera,stage:(s:string)=>void,fail:(e:unknown)=>void) {
+  constructor(scene:Scene,body:SoftBody,shadows:FacilityShadows,homeFacilities:Facilities,renderer:WebGPURenderer,camera:PerspectiveCamera,stage:(s:string)=>void,fail:(e:unknown)=>void,cameraOnlyOpticalHz=30) {
     this.scene=scene;this.body=body;this.shadows=shadows;this.homeFacilities=homeFacilities;this.renderer=renderer;this.camera=camera;this.stage=stage;this.fail=fail;
+    this.cameraOnlyOpticalHz=cameraOnlyOpticalHz;
     this.toyFacilities=new Facilities(body);this.toyFacilities.enabled=false;
     this.soccerFacilities=new Facilities(body);this.soccerFacilities.enabled=false;
     this.menu=new DestinationMenu(id=>{if(id===this.current){this.onMenuClose();return;}void this.travel(id).catch(this.fail);},()=>this.onMenuClose());
@@ -129,7 +131,7 @@ export class WorldTravel {
       // overlaps texture transfer with CPU geometry work and keeps first compile
       // focused on pipelines instead of paying texture upload at the same time.
       for(const texture of Object.values(grass))this.renderer.initTexture(texture);
-      this.soccer=new SoccerFacility(this.soccerWorld,this.body,this.shadows,grass,{camera:this.camera,fail:this.fail});this.soccerFacilities.add(this.soccer);
+      this.soccer=new SoccerFacility(this.soccerWorld,this.body,this.shadows,grass,{camera:this.camera,fail:this.fail,cameraOnlyOpticalHz:this.cameraOnlyOpticalHz});this.soccerFacilities.add(this.soccer);
       this.soccerPortal=new JellyPortal(SOCCER_PORTAL.x,SOCCER_PORTAL.z);this.soccerWorld.add(this.soccerPortal.group);this.shadows.add(this.soccerPortal.group,this.soccerPortal.lightingEnvelope);
       this.soccerPortalFacility=new PortalFacility(this.body,'soccer-portal-housing',SOCCER_PORTAL.x,SOCCER_PORTAL.z,this.soccerPortal.collisionBoxes,()=>this.requestTravel(),()=>this.portalAvailable());
       this.soccerFacilities.add(this.soccerPortalFacility);this.soccerFacilities.warmupCollisions();

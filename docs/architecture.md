@@ -134,8 +134,8 @@ minimum camera distance while active.
 one animation frame. It uses the project-wide drawing-buffer policy:
 
 - maximum of 4,000,000 physical pixels;
-- DPR capped at 1.7 and reduced below 1 when the CSS viewport itself exceeds the
-  pixel budget;
+- DPR capped at 1.7 on desktop or 1.5 on the startup-locked mobile path, and
+  reduced below 1 when the CSS viewport itself exceeds the pixel budget;
 - one `setDrawingBufferSize` call per resize;
 - transient zero-sized viewports ignored.
 

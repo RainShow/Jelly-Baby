@@ -17,7 +17,7 @@ export class SoccerLighting {
   private readonly body:SoftBody;
   private readonly fail:(error:Error)=>void;
 
-  constructor(turf:Mesh,body:SoftBody,shadows:FacilityShadows,caustics:CausticReceivers,camera:PerspectiveCamera,fail:(error:Error)=>void) {
+  constructor(turf:Mesh,body:SoftBody,shadows:FacilityShadows,caustics:CausticReceivers,camera:PerspectiveCamera,fail:(error:Error)=>void,cameraOnlyOpticalHz=30) {
     this.body=body;this.fail=fail;this.primary=caustics.optics;
     const direction=this.primary.lightDirection,fraction=shadows.surfaces.fractionNode;
     const field=shadows.atHeight(FIELD.y,direction,fraction.value);
@@ -25,7 +25,7 @@ export class SoccerLighting {
     turf.userData.groundReceiver=true;turf.receiveCaustics=true;
     caustics.registerGround(turf,albedo,field,fraction,FIELD.y);
     this.optics=new RefractiveLightField(body.cage.opticalSurface,direction,JELLY_FLAVORS.blueberry.absorption);
-    this.transport=new OpticalTransport(this.optics,body,camera,direction,fail);
+    this.transport=new OpticalTransport(this.optics,body,camera,direction,fail,cameraOnlyOpticalHz);
     this.receivers=caustics.addSource(this.optics);this.receivers.enabledNode.value=0;
   }
 

@@ -27,8 +27,8 @@ export class RefractiveLightField {
     this.shadowSpan=.22;this.shadowSpanNode=uniform(this.shadowSpan);
     this.shadowOrigin=new THREE.Vector2();this.shadowOriginNode=uniform(this.shadowOrigin);
     this.contactOrigin=new THREE.Vector2();this.contactOriginNode=uniform(this.contactOrigin);
-    this.shadowBytes=new Uint8Array(256*256*4);
-    this.shadowTexture=new THREE.DataTexture(this.shadowBytes,256,256,THREE.RGBAFormat,THREE.UnsignedByteType);
+    this.shadowBytes=new Uint8Array(256*256*2);
+    this.shadowTexture=new THREE.DataTexture(this.shadowBytes,256,256,THREE.RGFormat,THREE.UnsignedByteType);
     this.shadowTexture.minFilter=this.shadowTexture.magFilter=THREE.LinearFilter;
     this.shadowTexture.generateMipmaps=false;this.shadowTexture.colorSpace=THREE.NoColorSpace;this.shadowTexture.needsUpdate=true;
 

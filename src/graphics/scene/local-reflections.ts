@@ -2,7 +2,6 @@ import * as THREE from 'three/webgpu';
 
 const PROBE_SIZE=128;
 const MOVE_THRESHOLD=.0015;
-const FACES_PER_FRAME=4;
 const PROBE_NEAR=.006;
 const PROBE_FAR=16;
 
@@ -28,9 +27,11 @@ export class LocalReflectionProbe {
   private face=-1;
   private targetInitialized=false;
   private dirty=true;
+  readonly facesPerFrame:number;
 
-  constructor(scene:THREE.Scene,excluded:THREE.Object3D,environment:THREE.Texture) {
+  constructor(scene:THREE.Scene,excluded:THREE.Object3D,environment:THREE.Texture,facesPerFrame=4) {
     this.scene=scene;this.excluded=excluded;this.environment=environment;
+    this.facesPerFrame=facesPerFrame;
     this.target=new THREE.CubeRenderTarget(PROBE_SIZE,{type:THREE.HalfFloatType,format:THREE.RGBAFormat,depthBuffer:false});
     this.captureTarget=new THREE.CubeRenderTarget(PROBE_SIZE,{type:THREE.HalfFloatType,format:THREE.RGBAFormat,depthBuffer:true});
     this.texture=this.target.texture;
@@ -66,7 +67,7 @@ export class LocalReflectionProbe {
    * only on complete cubes, so there are no mixed-position PMREM seams.
    */
   update(renderer:THREE.WebGPURenderer,position:THREE.Vector3) {
-    let budget=FACES_PER_FRAME;
+    let budget=this.facesPerFrame;
     while(budget-->0) {
       if(this.face<0) {
         if(!this.dirty&&this.completedPosition.distanceToSquared(position)<MOVE_THRESHOLD*MOVE_THRESHOLD)return;
